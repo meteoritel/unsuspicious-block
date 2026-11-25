@@ -127,11 +127,24 @@ public final class ScenarioConditionEvaluator {
         return !(gate.bonusRollsGate().isPresent() && luck < gate.bonusRollsGate().getAsDouble());
     }
 
+    /**
+     * 判断单个条件是否需要随机触发。附魔概率档只有落在 0 和 1 之间才存在随机结果。
+     */
+    public static boolean isRandomCondition(LootConditionInfo condition) {
+        if (!LootConditionHandlers.supports(condition.conditionType(), ConditionTypeDescriptor.Capability.RANDOM)) {
+            return false;
+        }
+        if (condition.semantics() instanceof ConditionSemantics.EnchantedChance chance) {
+            return chance.probabilities().stream().anyMatch(probability -> probability > 0F && probability < 1F);
+        }
+        return true;
+    }
+
     private static boolean hasRandomCondition(List<LootConditionInfo> conditions) {
         for (LootConditionInfo condition : conditions) {
             boolean[] found = {false};
             ConditionTree.walkLogic(condition, node -> {
-                if (LootConditionHandlers.supports(node.conditionType(), ConditionTypeDescriptor.Capability.RANDOM)) {
+                if (isRandomCondition(node)) {
                     found[0] = true;
                 }
             });

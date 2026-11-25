@@ -7,6 +7,7 @@ import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.text.TextMeasurer;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.meteosuikit.api.control.UiLightbox;
+import com.meteorite.meteosuikit.api.input.UiAction;
 import com.meteorite.meteosuikit.api.input.UiChildren;
 import com.meteorite.meteosuikit.api.input.UiInputContainer;
 import com.meteorite.meteosuikit.api.input.UiInputTarget;
@@ -19,7 +20,6 @@ import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
-import com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground.BookLayout;
 import com.meteorite.unsuspiciousblock.client.ui.layout.LayoutAware;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
@@ -47,7 +47,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.BiConsumer;
@@ -84,9 +83,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
     private boolean documentDirty = true;
     private Language language;
     private List<UiNode> conditionTree = List.of();
-    @Nullable
-    private Component overviewLabel;
-    private @Nullable ScenarioTableSnapshot snapshot;
+    private @Nullable ScenarioTableSnapshot renderedSnapshot;
     private BiConsumer<String, String> locateTarget = (kind, target) -> {
     };
     private Runnable viewDrops = () -> {
@@ -198,21 +195,66 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
     }
 
     private void sync(Font font) {
+        ScenarioSession session = JournalClientConnection.scenario();
         if (table != null) {
-            JournalClientConnection.scenario().ensureCacheQuery(table);
+            session.ensureCacheQuery(table);
         }
-        if (conditions == null || measuredFont != font) {
+        UiDocumentView conditionView = ensureConditionView(font);
+        ScenarioTableSnapshot snapshot = session.snapshot(table);
+        Language nextLanguage = Language.getInstance();
+        if (!documentDirty && renderedSnapshot == snapshot && language == nextLanguage) {
+            return;
+        }
+
+        String nextViewKey = table == null ? null : table.toString();
+        boolean sameTable = nextViewKey != null && nextViewKey.equals(viewKey);
+        int previousOffset = sameTable ? conditionView.offset() : 0;
+        if (!sameTable) {
             saveCurrentPosition();
-            measuredFont = font;
-            if (conditions != null) {
-                children.remove(conditions);
-            }
-            conditions = new UiDocumentView(TextMeasurer.of(font), () -> UnsuspiciousUiTheme.PARCHMENT, ScenarioSession.text("conditions.heading"));
-            conditions.setBackground(ScenarioDetailPanel::renderConditionBackground);
-            children.add(conditions);
-            viewKey = null;
-            documentDirty = true;
         }
+        if (language != nextLanguage) {
+            conditionView.invalidateLayout();
+        }
+        language = nextLanguage;
+        viewKey = nextViewKey;
+        renderedSnapshot = snapshot;
+        documentDirty = false;
+
+        SimulationOptions options = snapshot == null ? null : snapshot.structure().options();
+        if (snapshot == null || options == null) {
+            layoutHeader(false);
+            configureUnavailable(font, conditionView);
+        } else {
+            boolean showEnchantments = !options.enchantments().isEmpty()
+                    || !snapshot.choice().params().toolEnchantments().isEmpty();
+            layoutHeader(showEnchantments);
+            configureAvailable(font, conditionView, snapshot, options, showEnchantments);
+        }
+        if (nextViewKey != null) {
+            conditionView.setOffset(sameTable ? previousOffset : conditionPositions.getOrDefault(nextViewKey, 0));
+        }
+    }
+
+    private UiDocumentView ensureConditionView(Font font) {
+        if (conditions != null && measuredFont == font) {
+            return conditions;
+        }
+        saveCurrentPosition();
+        if (conditions != null) {
+            children.remove(conditions);
+        }
+        UiDocumentView view = new UiDocumentView(TextMeasurer.of(font), () -> UnsuspiciousUiTheme.PARCHMENT,
+                ScenarioSession.text("conditions.heading"));
+        view.setBackground(ScenarioDetailPanel::renderConditionBackground);
+        children.add(view);
+        conditions = view;
+        measuredFont = font;
+        viewKey = null;
+        documentDirty = true;
+        return view;
+    }
+
+    private void layoutHeader(boolean showEnchantments) {
         int x = layout.rightPageX() + 4;
         int y = layout.rightPageY();
         int width = layout.rightPageWidth() - 8;
@@ -223,12 +265,6 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         int actionX = x + Math.max(0, width - actionWidth);
         summary.setBounds(x, headerY, 18, 18);
         int readoutAreaWidth = Math.max(0, actionX - x - 21 - 3);
-        ScenarioTableSnapshot nextSnapshot = JournalClientConnection.scenario().snapshot(table);
-        var choice = nextSnapshot == null ? null : nextSnapshot.choice();
-        CatalogTableDto structure = nextSnapshot == null ? null : nextSnapshot.structure();
-        boolean showEnchantments = structure != null && structure.options() != null && choice != null
-                && (!structure.options().enchantments().isEmpty()
-                || !choice.params().toolEnchantments().isEmpty());
         if (showEnchantments) {
             int pillGap = 3;
             int luckWidth = Math.max(0, (readoutAreaWidth - pillGap) / 2);
@@ -239,34 +275,9 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
             luck.setBounds(x + 21, headerY + 1, readoutAreaWidth, 16);
             enchantments.setBounds(0, 0, 0, 0);
         }
-        String nextStatus = nextSnapshot == null ? "uncomputed" : nextSnapshot.status();
-        Language nextLanguage = Language.getInstance();
-        if (!documentDirty && snapshot == nextSnapshot && language == nextLanguage) return;
-        snapshot = nextSnapshot;
-
-        boolean sameViewKey = table != null && Objects.equals(viewKey, table.toString());
-        int preservedOffset = sameViewKey ? conditions.offset() : -1;
-        if (!sameViewKey) {
-            saveCurrentPosition();
-        }
-        documentDirty = false;
-        if (language != nextLanguage) conditions.invalidateLayout();
-        language = nextLanguage;
-        viewKey = table == null ? null : table.toString();
-
-        if (structure == null || structure.options() == null || choice == null) {
-            configureUnavailable(font);
-        } else {
-            configureAvailable(font, structure, choice, nextStatus);
-        }
-        if (viewKey != null) {
-            conditions.setOffset(preservedOffset >= 0
-                    ? preservedOffset : conditionPositions.getOrDefault(viewKey, 0));
-        }
     }
 
-    private void configureUnavailable(Font font) {
-        UiDocumentView conditionView = Objects.requireNonNull(conditions);
+    private void configureUnavailable(Font font, UiDocumentView conditionView) {
         conditionTree = List.of(new UiNode.Row(ScenarioSession.text("unavailable"),
                 UiTextScheme.PARCHMENT.label()));
         conditionView.setContent(conditionTree);
@@ -274,53 +285,51 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
             control.configure(font, Component.empty(), UiTextScheme.PARCHMENT.body(), null, List.of(), null);
             control.setVisible(false);
         }
-        overviewLabel = null;
     }
 
-    private void configureAvailable(Font font, CatalogTableDto structure,
-                                    SimulationPreferenceStore.Selection choice, String rawStatus) {
-        UiDocumentView conditionView = Objects.requireNonNull(conditions);
-        SimulationOptions options = Objects.requireNonNull(structure.options());
+    private void configureAvailable(Font font, UiDocumentView conditionView, ScenarioTableSnapshot snapshot,
+                                    SimulationOptions options, boolean showEnchantments) {
+        CatalogTableDto structure = snapshot.structure();
+        ResourceLocation currentTable = structure.id();
+        var choice = snapshot.choice();
+        var params = choice.params();
         for (UiControl control : controls) {
             control.setVisible(true);
             control.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.SECONDARY);
         }
-        ResourceLocation currentTable = Objects.requireNonNull(table);
 
-        conditionTree = ScenarioPageBuilder.buildConditions(Objects.requireNonNull(snapshot),
+        conditionTree = ScenarioPageBuilder.buildConditions(snapshot, options,
                 () -> JournalClientConnection.scenario().clearNotes(),
-                () -> JournalClientConnection.scenario().select(currentTable, List.of(), choice.params()),
+                () -> JournalClientConnection.scenario().select(currentTable, List.of(), params),
                 conditionId -> JournalClientConnection.scenario().toggleCondition(currentTable, conditionId),
                 target -> ScenarioRecommendationOverlay.open(overlays, currentTable, target), locateTarget);
         conditionView.setContent(conditionTree);
 
-        overviewLabel = structure.displayName();
-
-        Component toolName = Component.literal(choice.params().toolId().toString());
+        ResourceLocation toolId = params.toolId();
+        Component toolName = Component.literal(toolId.toString());
         for (var tool : options.tools()) {
-            if (tool.id().equals(choice.params().toolId())) {
+            if (tool.id().equals(toolId)) {
                 toolName = tool.displayName();
                 break;
             }
         }
         List<Component> paramsTooltip = new ArrayList<>();
         paramsTooltip.add(ScenarioSession.text("params.current", toolName,
-                choice.params().luck(), choice.params().sampleCount()).copy().withStyle(TooltipBuilder.BODY));
-        choice.params().toolEnchantments().forEach((id, level) -> paramsTooltip.add(
+                params.luck(), params.sampleCount()).copy().withStyle(TooltipBuilder.BODY));
+        params.toolEnchantments().forEach((id, level) -> paramsTooltip.add(
                 ScenarioSession.text("params.enchant_level",
                         ScenarioParamsOverlay.enchantmentName(id), level).copy().withStyle(TooltipBuilder.ACCENT)));
 
         summary.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
         summary.configure(font, Component.empty(), JournalTextColors.NAME,
-                new UiIcon.Item(new ItemStack(BuiltInRegistries.ITEM.get(choice.params().toolId()))),
+                new UiIcon.Item(new ItemStack(BuiltInRegistries.ITEM.get(toolId))),
                 List.of(toolName.copy().withStyle(TooltipBuilder.BODY)), null);
         configureValue(font, luck, UiAtlas.LUCK_ICON, "params.luck_short",
-                String.format(Locale.ROOT, "%s", choice.params().luck()));
-        boolean showEnchantments = !options.enchantments().isEmpty() || !choice.params().toolEnchantments().isEmpty();
+                Float.toString(params.luck()));
         enchantments.setVisible(showEnchantments);
         if (showEnchantments) {
             configureValue(font, enchantments, null, "params.enchantments_short",
-                    String.valueOf(choice.params().toolEnchantments().size()));
+                    Integer.toString(params.toolEnchantments().size()));
         }
 
         probeButton.configure(font, Component.empty(), UiAtlas.SYNC_PLAYER,
@@ -332,36 +341,10 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
 
         paramsButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.PARAMS), paramsTooltip,
                 () -> overlays.open(new ScenarioParamsOverlay(overlays, currentTable, choice.conditions(),
-                        options, choice.params())));
+                        options, params)));
         paramsButton.setAccessibleName(ScenarioSession.text("params.title"));
 
-        Component failure = "failed".equals(rawStatus)
-                ? ScenarioSession.text("failure." + Objects.requireNonNull(snapshot).failure())
-                : null;
-        boolean isCached = "cached".equals(rawStatus);
-        List<Component> calcTooltip = failure != null
-                ? List.of(failure.copy().withStyle(TooltipBuilder.NEGATIVE))
-                : isCached
-                ? List.of(ScenarioSession.text("view_drops").copy().withStyle(TooltipBuilder.TITLE),
-                ScenarioSession.text("cached_hint").copy().withStyle(TooltipBuilder.LABEL))
-                : List.of(ScenarioSession.text("calculate").copy().withStyle(TooltipBuilder.TITLE),
-                ScenarioSession.text(rawStatus).copy().withStyle(TooltipBuilder.LABEL));
-        calculateButton.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
-        calculateButton.configure(font,
-                ScenarioSession.text(isCached
-                        ? "view_drops_ready"
-                        : "uncomputed".equals(rawStatus) || "failed".equals(rawStatus)
-                        || "query_failed".equals(rawStatus) ? "calculate" : "results.status." + rawStatus),
-                UiAtlas.statusBadge(rawStatus),
-                calcTooltip,
-                () -> {
-                    if (isCached) {
-                        viewDrops.run();
-                    } else {
-                        JournalClientConnection.scenario().request(currentTable, true);
-                    }
-                });
-        calculateButton.setEnabled(!List.of("pending", "querying", "retrieving").contains(rawStatus));
+        configureCalculateButton(font, snapshot);
 
         expandButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.EXPAND),
                 List.of(ScenarioSession.text("frame.expand").copy().withStyle(TooltipBuilder.BODY)),
@@ -369,12 +352,33 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
                     var content = ScenarioExpandedOverlay.create(this, font);
                     UiLightbox lightbox = new UiLightbox(ScenarioExpandedOverlay.LABELS, content, overlays::close);
                     ScenarioUi.styleLightbox(lightbox);
-                    lightbox.setText(ScenarioSession.text("conditions.title",
-                            overviewLabel == null ? structure.displayName() : overviewLabel), null);
+                    lightbox.setText(ScenarioSession.text("conditions.title", structure.displayName()), null);
                     lightbox.setMaskClickCloses(false);
                     overlays.open(lightbox);
                 });
         expandButton.setAccessibleName(ScenarioSession.text("frame.expand"));
+    }
+
+    private void configureCalculateButton(Font font, ScenarioTableSnapshot snapshot) {
+        String status = snapshot.status();
+        String label = switch (status) {
+            case "cached" -> "view_drops_ready";
+            case "uncomputed", "failed", "query_failed" -> "calculate";
+            default -> "results.status." + status;
+        };
+        List<Component> tooltip = switch (status) {
+            case "failed" -> List.of(ScenarioSession.text("failure." + snapshot.failure())
+                    .copy().withStyle(TooltipBuilder.NEGATIVE));
+            case "cached" -> List.of(ScenarioSession.text("view_drops").copy().withStyle(TooltipBuilder.TITLE),
+                    ScenarioSession.text("cached_hint").copy().withStyle(TooltipBuilder.LABEL));
+            default -> List.of(ScenarioSession.text("calculate").copy().withStyle(TooltipBuilder.TITLE),
+                    ScenarioSession.text(status).copy().withStyle(TooltipBuilder.LABEL));
+        };
+        UiAction action = "cached".equals(status) ? () -> viewDrops.run()
+                : () -> JournalClientConnection.scenario().request(snapshot.structure().id(), true);
+        calculateButton.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
+        calculateButton.configure(font, ScenarioSession.text(label), UiAtlas.statusBadge(status), tooltip, action);
+        calculateButton.setEnabled(!List.of("pending", "querying", "retrieving").contains(status));
     }
 
     private static void configureValue(Font font, UiControl control, @Nullable UiIcon icon, String key, String value) {

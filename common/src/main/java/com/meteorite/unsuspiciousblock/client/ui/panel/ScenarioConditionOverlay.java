@@ -135,8 +135,7 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
     }
 
     private void submitDraft(Function<ScenarioSession.Draft, ScenarioSession.CommitResult> submit) {
-        List<String> next = SimulationInput.canonicalize(List.copyOf(draftConditions));
-        var draft = baseDraft.withInput(new SimulationInput(next, params));
+        var draft = baseDraft.withInput(new SimulationInput(List.copyOf(draftConditions), params));
         var result = submit.apply(draft);
         if (!result.applied()) {
             error = result.error();
@@ -149,10 +148,10 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         ScenarioUi.renderPage(graphics, bounds);
         graphics.drawString(font, ScenarioSession.text("conditions.overlay_title"),
                 bounds.x() + 8, bounds.y() + 9, UiTextScheme.PARCHMENT.title(), false);
-        List<String> currentDraft = SimulationInput.canonicalize(List.copyOf(draftConditions));
-        ScenarioTableSnapshot presentation = session.snapshot(table, new SimulationPreferenceStore.Selection(currentDraft, params));
+        var selection = new SimulationPreferenceStore.Selection(List.copyOf(draftConditions), params);
+        ScenarioTableSnapshot presentation = session.snapshot(table, selection);
         Component countLabel = ScenarioSession.text("conditions.summary_count",
-                currentDraft.size(), options.conditions().size());
+                selection.conditions().size(), options.conditions().size());
         int countWidth = font.width(countLabel);
         int pillWidth = countWidth + 22;
         JournalPalette.drawStatPill(graphics, bounds.right() - 8 - pillWidth, bounds.y() + 6, pillWidth, 14, false);

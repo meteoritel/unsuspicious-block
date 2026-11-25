@@ -8,7 +8,10 @@ import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.meteosuikit.api.control.UiPaginationState;
 import com.meteorite.unsuspiciousblock.client.ui.widget.CopyCoordinateButton;
 import com.meteorite.meteosuikit.api.control.UiControl;
-import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.input.UiChildren;
+import com.meteorite.meteosuikit.api.input.UiInputContainer;
+import com.meteorite.meteosuikit.api.input.UiPointer;
+import com.meteorite.meteosuikit.api.input.UiPointerHit;
 import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
@@ -37,52 +40,66 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
     private final UiChildren<UiControl> contentControls = new UiChildren<>();
     private boolean contentDirty = true;
     private int contentLineHeight;
-    @Override public UiChildren<UiControl> inputChildren() { return contentControls; }
-    @Override public void prepareUi() {
+
+    @Override
+    public UiChildren<UiControl> inputChildren() {
+        return contentControls;
+    }
+
+    @Override
+    public void prepareUi() {
         Font font = Minecraft.getInstance().font;
-        if (!contentDirty && contentLineHeight == font.lineHeight) return;
+        if (!contentDirty && contentLineHeight == font.lineHeight) {
+            return;
+        }
         contentDirty = false;
         contentLineHeight = font.lineHeight;
-        renderTooltipSlots.clear();
+        tooltipSlots.clear();
         copyButton.setVisible(entry != null);
-        if (entry == null) return;
+        if (entry == null) {
+            return;
+        }
         copyButton.setLayoutKey("log/coordinates/" + entry.entryId());
         int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
-        int cardY = layout.rightPageY() + JournalLayout.LOG_TOP + JournalLayout.LOG_DETAIL_BACK_BTN_SIZE + 4;
         int width = layout.rightPageWidth() - 20;
         copyButton.setBounds(layout.rightPageX() + 8 + width - pad - CopyCoordinateButton.WIDTH,
-                cardY + pad + (JournalLayout.LOG_DETAIL_META_ROWS - 1)
+                spacetimeTop() + pad + (JournalLayout.LOG_DETAIL_META_ROWS - 1)
                         * (font.lineHeight + JournalLayout.LOG_DETAIL_META_LINE_GAP),
                 CopyCoordinateButton.WIDTH, CopyCoordinateButton.HEIGHT);
         CopyCoordinateButton.configure(copyButton, entry);
-        int gridTop = layout.rightPageY() + JournalLayout.LOG_TOP + getFixedHeight(font.lineHeight);
-        int bottom = layout.rightPageBottom() - 4;
-        int reserve = JournalLayout.LOG_DETAIL_PROGRESS_BAR_GAP + JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT + pad;
-        GridGeometry grid = lootGrid(gridTop, width, bottom, reserve);
-        UiGridMetrics metrics = new UiGridMetrics(grid.iconsPerRow(), ICON_SIZE, ICON_SIZE, ICON_GAP, ICON_GAP);
-        int from = Math.min(cachedLoot.size(), pagination.getPage() * grid.iconsPerPage());
-        int to = Math.min(cachedLoot.size(), from + grid.iconsPerPage());
+        LootGrid grid = lootGrid(font.lineHeight, width);
+        int from = Math.min(cachedLoot.size(), pagination.getPage() * grid.pageSize());
+        int to = Math.min(cachedLoot.size(), from + grid.pageSize());
         for (int i = from; i < to; i++) {
-            UiRect r = metrics.cellBounds(i - from);
-            renderTooltipSlots.add(new IconSlot(layout.rightPageX() + 8 + pad + r.x(), gridTop + r.y(), cachedLoot.get(i)));
+            tooltipSlots.add(new IconSlot(grid.cellBounds(i - from), cachedLoot.get(i)));
         }
     }
-    @Override public UiPointerHit hitTest(double x, double y) {
+
+    @Override
+    public UiPointerHit hitTest(double x, double y) {
         UiPointerHit hit = contentControls.hitTest(x, y);
-        if (hit != null) return hit.within(this);
+        if (hit != null) {
+            return hit.within(this);
+        }
         IconSlot slot = findTooltipSlot(x, y);
-        if (slot != null) return UiPointerHit.leaf(this, x, y)
-                .withRow(this, 0, slot.entry().stack(), new UiRect(slot.x(), slot.y(), ICON_SIZE, ICON_SIZE))
-                .withPresentation((g, font, px, py) -> g.renderTooltip(font, slot.entry().stack(), px, py));
-        return null;
+        if (slot == null) {
+            return null;
+        }
+        ItemStack stack = slot.entry().stack();
+        return UiPointerHit.leaf(this, x, y)
+                .withRow(this, 0, stack, slot.bounds())
+                .withPresentation((g, font, px, py) -> g.renderTooltip(font, stack, px, py));
     }
+
     /** 战利品布局复用实际悬停槽位，和输入命中保持同一几何。 */
-    @Override public List<UiLayoutNode> layoutNodes() {
+    @Override
+    public List<UiLayoutNode> layoutNodes() {
         List<UiLayoutNode> nodes = new ArrayList<>(contentControls.layoutNodes());
-        if (entry == null) return nodes;
-        for (IconSlot slot : renderTooltipSlots) {
-            UiRect rect = new UiRect(slot.x(), slot.y(), ICON_SIZE, ICON_SIZE);
-            nodes.add(new UiLayoutNode(UiLayoutNode.Kind.ROW, rect, slot.entry().stack().getHoverName(),
+        if (entry == null) {
+            return nodes;
+        }
+        for (IconSlot slot : tooltipSlots) {
+            nodes.add(new UiLayoutNode(UiLayoutNode.Kind.ROW, slot.bounds(), slot.entry().stack().getHoverName(),
                     0, 0, true, true, List.of()).identified(
                     "log/loot/" + entry.entryId() + "/" + slot.entry().signatureKey(), this));
         }
@@ -93,6 +110,8 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
     private static final int ICON_SIZE = 20;
     private static final int ICON_GAP = 2;
     private static final int LABEL_GAP = JournalLayout.LOG_DETAIL_META_LABEL_GAP;
+    private static final int LOOT_PROGRESS_RESERVE = JournalLayout.LOG_DETAIL_PROGRESS_BAR_GAP
+            + JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT + JournalLayout.LOG_DETAIL_CARD_PAD;
 
     private JournalBookBackground.BookLayout layout;
     private final UiPaginationState pagination = new UiPaginationState(this::computePageCount);
@@ -103,9 +122,8 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
     // 缓存：以 expectedLoot 为基准构建的合并展示列表
     private List<LootDisplayEntry> cachedLoot = List.of();
     // 战利品整体进度统计（角标/进度条用）
-    private int totalLootCount;
     private int obtainedLootCount;
-    private final List<IconSlot> renderTooltipSlots = new ArrayList<>();
+    private final List<IconSlot> tooltipSlots = new ArrayList<>();
     // 返回列表按钮（UiControl widget，由外部 screen 注册）
     @Nullable
     private UiControl backButton;
@@ -134,7 +152,6 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
         this.entry = entry;
         this.tableId = tableId;
         this.cachedLoot = entry != null ? buildLootDisplay(entry) : List.of();
-        this.totalLootCount = this.cachedLoot.size();
         this.obtainedLootCount = 0;
         for (LootDisplayEntry loot : this.cachedLoot) {
             if (loot.isFullyObtained()) {
@@ -226,8 +243,7 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
         int leftX = this.layout.rightPageX() + 8;
         int contentWidth = this.layout.rightPageWidth() - 20;
         // 返回按钮由 UiControl widget 渲染，这里仅占位
-        int y = this.layout.rightPageY() + JournalLayout.LOG_TOP
-                + JournalLayout.LOG_DETAIL_BACK_BTN_SIZE + 4;
+        int y = spacetimeTop();
 
         ExcavationLogEntry entry = this.entry;
         if (entry == null) {
@@ -253,8 +269,8 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
 
     @Nullable
     private IconSlot findTooltipSlot(double mouseX, double mouseY) {
-        for (IconSlot slot : this.renderTooltipSlots) {
-            if (slot.contains(mouseX, mouseY)) {
+        for (IconSlot slot : this.tooltipSlots) {
+            if (slot.bounds().contains(mouseX, mouseY)) {
                 return slot;
             }
         }
@@ -285,8 +301,7 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
         int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
         int lineHeight = font.lineHeight;
         int lineGap = JournalLayout.LOG_DETAIL_META_LINE_GAP;
-        int rows = JournalLayout.LOG_DETAIL_META_ROWS;
-        int cardH = pad + lineHeight * rows + lineGap * (rows - 1) + pad;
+        int cardH = spacetimeHeight(lineHeight);
 
         drawCardBackground(g, x, y, w, cardH);
 
@@ -402,35 +417,16 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
     // —— Loot 卡片：增强型图标网格（角标）+ 底部总进度条 ——
     private void renderLootCard(GuiGraphics g, Font font, int x, int y, int w) {
         int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
-        int lineHeight = font.lineHeight;
-        int stride = ICON_SIZE + ICON_GAP;
+        LootGrid grid = lootGrid(font.lineHeight, w);
+        int totalLoot = cachedLoot.size();
+        boolean hasLoot = totalLoot > 0;
 
         // 标题行：收集清单 [完成标志]
         Component title = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_collection");
-        boolean allCompleted = isAllLootCompleted();
+        boolean allCompleted = hasLoot && obtainedLootCount == totalLoot;
         int titleY = y + pad;
 
-        // 底部进度条预留高度（进度条 + 间距 + 卡片底内边距）
-        int progressBarH = JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT;
-        int progressGap = JournalLayout.LOG_DETAIL_PROGRESS_BAR_GAP;
-        int bottomReserve = this.cachedLoot.isEmpty() ? 0 : (progressGap + progressBarH + pad);
-
-        int pageBottom = this.layout.rightPageY() + this.layout.rightPageHeight() - 4;
-        // 标题行高 + 标题与网格的额外间距
-        int labelH = lineHeight + JournalLayout.LOG_DETAIL_TITLE_TO_GRID_GAP;
-        int gridTop = titleY + labelH;
-        // 网格几何与 computePageCount 共用同一来源（R-5）
-        GridGeometry grid = lootGrid(gridTop, w, pageBottom, bottomReserve);
-
-        int page = this.pagination.getPage();
-        int from = Math.min(this.cachedLoot.size(), page * grid.iconsPerPage());
-        int to = Math.min(this.cachedLoot.size(), from + grid.iconsPerPage());
-
-        // 计算卡片总高度（用于绘制卡片背景）
-        int gridHeight = this.cachedLoot.isEmpty() ? 0 : grid.gridAvailable();
-        int cardH = pad + labelH + gridHeight + bottomReserve;
-
-        // 绘制卡片背景，明确区域边界
+        int cardH = grid.y() - y + (hasLoot ? grid.availableHeight() + LOOT_PROGRESS_RESERVE : 0);
         drawCardBackground(g, x, y, w, cardH);
 
         // 绘制标题与完成标记，统一限制在卡片内边距范围内避免溢出书页右侧
@@ -451,24 +447,20 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
                     JournalLayout.LOG_DETAIL_LABEL_COLOR, false, 0, false);
         }
 
-        if (this.cachedLoot.isEmpty()) {
+        if (!hasLoot) {
             g.drawString(font,
                     Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_loot_empty"),
-                    x + pad, gridTop, JournalLayout.LOG_DETAIL_UNKNOWN_COLOR, false);
+                    grid.x(), grid.y(), JournalLayout.LOG_DETAIL_UNKNOWN_COLOR, false);
             return;
         }
 
-        // 渲染图标网格
-        int gridX = x + pad;
+        int from = Math.min(totalLoot, pagination.getPage() * grid.pageSize());
+        int to = Math.min(totalLoot, from + grid.pageSize());
         for (int i = from; i < to; i++) {
             LootDisplayEntry loot = this.cachedLoot.get(i);
-            int row = (i - from) / grid.iconsPerRow();
-            int col = (i - from) % grid.iconsPerRow();
-            int iconX = gridX + col * stride;
-            int iconY = gridTop + row * stride;
-
-            // 不再使用原版数量角标，所有角标改为自定义绘制
-            // 展示条目持有的栈只读（渲染与 tooltip 都不改它），不再逐图标 copy()
+            UiRect cell = grid.cellBounds(i - from);
+            int iconX = cell.x();
+            int iconY = cell.y();
             ItemStack stack = loot.stack();
 
             int actual = loot.actualCount();
@@ -483,17 +475,18 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
                 RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 0.35F);
             }
 
-            UiRenderLayers.item(g, new UiRect(iconX, iconY, ICON_SIZE, ICON_SIZE), local -> {
+            UiRenderLayers.item(g, cell, local -> {
                 local.pose().pushPose();
                 try {
                     local.pose().translate(iconX, iconY, 0);
                     local.pose().scale(ICON_SIZE / 16f, ICON_SIZE / 16f, 1);
                     local.renderItem(stack, 0, 0);
-                } finally { local.pose().popPose(); }
+                } finally {
+                    local.pose().popPose();
+                }
             });
 
-            // 幽灵虚影的 alpha 由着色器颜色在**提交时**生效，所以只有这一支需要立刻 flush 再复位；
-            // 其余图标不再逐图标 flush（原实现在循环内无条件 flush，会打断批次；提交顺序不变）。
+            // 着色器颜色在提交时生效，半透明图标须先提交再复位颜色。
             if (actual == 0) {
                 g.flush();
                 RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
@@ -511,9 +504,8 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
 
         // 底部进度条 + 文字（文字直接渲染在进度条本体上）
         int barWidth = w - pad * 2;
-        int barX = x + pad;
-        int barY = pageBottom - progressBarH - pad;
-        drawProgressBar(g, font, barX, barY, barWidth, this.obtainedLootCount, this.totalLootCount);
+        int barY = grid.pageBottom() - JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT - pad;
+        drawProgressBar(g, font, grid.x(), barY, barWidth, obtainedLootCount, totalLoot);
     }
 
     // 角标使用独立前景层和原版文字阴影。
@@ -527,9 +519,6 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
     // 绘制底部总进度条，"Collected X/Y" 文字直接渲染在进度条本体上
     private static void drawProgressBar(GuiGraphics g, Font font, int x, int y, int width,
                                         int obtained, int total) {
-        if (total <= 0) {
-            return;
-        }
         Component progressText = Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.log_loot_progress", obtained, total);
         JournalPalette.drawProgressBar(g, font, x, y, width,
@@ -546,71 +535,56 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
             int expectedCount = e.getValue();
             int actualCount = actual.getOrDefault(key, 0);
             ItemStack stack = JournalFormatHelper.createLootStack(key, expectedCount);
-            if (stack != null && !stack.isEmpty()) {
+            if (stack != null) {
                 result.add(new LootDisplayEntry(key, expectedCount, actualCount, stack));
             }
         }
         return result;
     }
 
-    private boolean isAllLootCompleted() {
-        if (this.cachedLoot.isEmpty()) {
-            return false;
+    private record LootGrid(UiGridMetrics metrics, int x, int y, int pageBottom, int availableHeight, int pageSize) {
+        private UiRect cellBounds(int index) {
+            UiRect cell = metrics.cellBounds(index);
+            return new UiRect(x + cell.x(), y + cell.y(), cell.width(), cell.height());
         }
-        for (LootDisplayEntry loot : this.cachedLoot) {
-            if (!loot.isFullyObtained()) {
-                return false;
-            }
-        }
-        return true;
     }
 
-    /** 图标网格几何：分页计算与渲染共用的唯一来源，每页行数/列数只在这里算一次（R-5）。 */
-    private record GridGeometry(int iconsPerRow, int rowsPerPage, int iconsPerPage, int gridAvailable) {
-    }
-
-    // 由「网格起点 y + 卡片宽 + 页底 + 进度条预留」推导每页可放的图标数。
-    private static GridGeometry lootGrid(int gridTop, int cardWidth, int pageBottom, int bottomReserve) {
+    private LootGrid lootGrid(int lineHeight, int cardWidth) {
         int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
+        int gridX = layout.rightPageX() + 8 + pad;
+        int gridY = spacetimeTop() + spacetimeHeight(lineHeight) + JournalLayout.LOG_DETAIL_CARD_GAP
+                + pad + lineHeight + JournalLayout.LOG_DETAIL_TITLE_TO_GRID_GAP;
+        int pageBottom = layout.rightPageBottom() - 4;
         int stride = ICON_SIZE + ICON_GAP;
-        int gridAvailable = Math.max(0, pageBottom - gridTop - bottomReserve);
-        int iconsPerRow = Math.max(1, (cardWidth - pad * 2 + ICON_GAP) / stride);
-        int rowsPerPage = Math.max(1, gridAvailable / stride);
-        return new GridGeometry(iconsPerRow, rowsPerPage,
-                Math.max(1, iconsPerRow * rowsPerPage), gridAvailable);
+        int availableHeight = Math.max(0, pageBottom - gridY - LOOT_PROGRESS_RESERVE);
+        int columns = Math.max(1, (cardWidth - pad * 2 + ICON_GAP) / stride);
+        int rows = Math.max(1, availableHeight / stride);
+        UiGridMetrics metrics = new UiGridMetrics(columns, ICON_SIZE, ICON_SIZE, ICON_GAP, ICON_GAP);
+        return new LootGrid(metrics, gridX, gridY, pageBottom, availableHeight, columns * rows);
     }
 
     // —— 分页计算 ——
     private int computePageCount() {
-        if (this.entry == null || this.cachedLoot.isEmpty()) {
+        if (this.cachedLoot.isEmpty()) {
             return 1;
         }
         Font font = Minecraft.getInstance().font;
-        int pad = JournalLayout.LOG_DETAIL_CARD_PAD;
         int contentWidth = this.layout.rightPageWidth() - 20;
-        int pageBottom = this.layout.rightPageY() + this.layout.rightPageHeight() - 4;
-        int bottomReserve = JournalLayout.LOG_DETAIL_PROGRESS_BAR_GAP
-                + JournalLayout.LOG_DETAIL_PROGRESS_BAR_HEIGHT + pad;
-        // 网格起点与 render 中逐卡片累加的结果一致：固定偏移不含底部预留，故这里不含 bottomReserve
-        int gridTop = this.layout.rightPageY() + JournalLayout.LOG_TOP + getFixedHeight(font.lineHeight);
-        GridGeometry grid = lootGrid(gridTop, contentWidth, pageBottom, bottomReserve);
-        if (grid.gridAvailable() <= 0) {
+        LootGrid grid = lootGrid(font.lineHeight, contentWidth);
+        if (grid.availableHeight() == 0) {
             return 1;
         }
-        return Math.max(1, (this.cachedLoot.size() + grid.iconsPerPage() - 1) / grid.iconsPerPage());
+        return 1 + (this.cachedLoot.size() - 1) / grid.pageSize();
     }
 
-    // 网格起点相对页顶的固定偏移：返回按钮 + 时空卡片 + 卡片间距 + 卡片内边距 + 标题行（不含底部预留）
-    private static int getFixedHeight(int lineHeight) {
-        int backHeight = JournalLayout.LOG_DETAIL_BACK_BTN_SIZE + 4;
-        // Spacetime 卡片：6 行文字（行高 = lineHeight + 行间距）
-        int spacetimeCardH = JournalLayout.LOG_DETAIL_CARD_PAD * 2
+    private int spacetimeTop() {
+        return layout.rightPageY() + JournalLayout.LOG_TOP + JournalLayout.LOG_DETAIL_BACK_BTN_SIZE + 4;
+    }
+
+    private static int spacetimeHeight(int lineHeight) {
+        return JournalLayout.LOG_DETAIL_CARD_PAD * 2
                 + lineHeight * JournalLayout.LOG_DETAIL_META_ROWS
                 + JournalLayout.LOG_DETAIL_META_LINE_GAP * (JournalLayout.LOG_DETAIL_META_ROWS - 1);
-        // 标题行高 + 标题与网格的额外间距
-        int labelH = lineHeight + JournalLayout.LOG_DETAIL_TITLE_TO_GRID_GAP;
-        return backHeight + spacetimeCardH + JournalLayout.LOG_DETAIL_CARD_GAP
-                + JournalLayout.LOG_DETAIL_CARD_PAD + labelH;
     }
 
     // —— 卡片背景 ——
@@ -626,11 +600,7 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
         }
     }
 
-    private record IconSlot(int x, int y, LootDisplayEntry entry) {
-        private boolean contains(double mouseX, double mouseY) {
-            return mouseX >= this.x && mouseX < this.x + ICON_SIZE
-                    && mouseY >= this.y && mouseY < this.y + ICON_SIZE;
-        }
+    private record IconSlot(UiRect bounds, LootDisplayEntry entry) {
     }
 
 }

@@ -1,48 +1,45 @@
 package com.meteorite.unsuspiciousblock.client.ui.panel;
 
-import com.meteorite.unsuspiciousblock.client.ui.text.PanelTextMetrics;
-import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
-import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
-import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
-
-import com.meteorite.meteosuikit.api.style.UiTextScheme;
-
-import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
-import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
-
-import java.util.Objects;
-import java.util.function.Consumer;
-
-import net.minecraft.locale.Language;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.control.UiControlGroup;
-import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.control.UiPaginationState;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
-import com.meteorite.meteosuikit.api.render.UiRenderLayers;
-import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
-import com.meteorite.unsuspiciousblock.client.ui.theme.ScenarioAtlas;
-import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import com.meteorite.meteosuikit.api.input.UiChildren;
+import com.meteorite.meteosuikit.api.input.UiInputContainer;
+import com.meteorite.meteosuikit.api.input.UiPointer;
+import com.meteorite.meteosuikit.api.input.UiPointerHit;
 import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
-import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
-import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.meteosuikit.api.render.UiRenderLayers;
+import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.meteosuikit.api.text.TextScroll;
-import com.meteorite.unsuspiciousblock.client.ui.support.JournalTooltipBuilder;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
+import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
+import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalTooltipBuilder;
+import com.meteorite.unsuspiciousblock.client.ui.text.PanelTextMetrics;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
+import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
+import com.meteorite.unsuspiciousblock.client.ui.theme.ScenarioAtlas;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
-import com.meteorite.unsuspiciousblock.core.loottable.simulation.ProbabilityFormat;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.FunctionObservationSummary;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ProbabilityFormat;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import com.meteorite.meteosuikit.api.control.UiPaginationState;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
@@ -53,6 +50,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * 右侧物品网格面板 —— 渲染物品图标、名称、概率与数量角标，补充信息通过 tooltip 展示
@@ -60,6 +59,7 @@ import java.util.Map;
 public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private static final UiGridMetrics GRID = new UiGridMetrics(JournalLayout.GRID_CELLS_PER_ROW,
             JournalLayout.GRID_CELL_WIDTH, JournalLayout.GRID_CELL_HEIGHT, JournalLayout.GRID_COLUMN_GAP, 0);
+    private static final String TAG_BACK_TOOLTIP = "screen.unsuspiciousblock.archaeology_journal.tag_group_back_tooltip";
     private final UiControlGroup controls = new UiControlGroup();
     private boolean controlsDirty = true;
     private Runnable onNavigate = () -> {
@@ -79,38 +79,57 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
 
     @Override
     public void prepareUi() {
-        if (!controlsDirty) return;
+        if (!controlsDirty) {
+            return;
+        }
         controlsDirty = false;
         controls.beginUpdate();
-        for (int index = 0; index < visibleCellCount(); index++) {
-            GridCell cell = cell(index);
-            if (cell == null) continue;
-            if (cell.back() || cell.tag() != null && cell.tag().unlocked()
-                    || cell.child() != null && cell.child().unlocked()) {
-                UiControl control = controls.obtain(cell.key());
-                UiRect r = cell.bounds();
-                control.setBounds(r.x(), r.y(), r.width(), r.height());
-                JournalControls.configureHotspot(control, cell.name(), () -> activateCell(cell));
-            }
-            if (cell.content() instanceof ChildTableEntry child && child.unlocked()) {
-                UiControl control = controls.obtain("recommend:" + child.tableId());
-                UiRect r = recommendationBounds(cell);
-                control.setBounds(r.x(), r.y(), r.width(), r.height());
-                JournalControls.configureHotspot(control,
-                        ScenarioSession.text("recommend.title"),
-                        () -> onRecommend.accept(SimulationAssistTarget.childTable(child.tableId())));
-            } else if (cell.item() != null && cell.item().unlocked()
-                    && cell.item().probability() instanceof Probability.NeedsCondition) {
-                String storedKey = cell.item().signature().toStoredKey();
-                UiControl control = controls.obtain("recommend:item:" + storedKey);
-                UiRect r = recommendationBounds(cell);
-                control.setBounds(r.x(), r.y(), r.width(), r.height());
-                JournalControls.configureHotspot(control,
-                        ScenarioSession.text("recommend.title"),
-                        () -> onRecommend.accept(SimulationAssistTarget.item(storedKey)));
+        for (GridCell cell : visibleCells) {
+            switch (cell.content()) {
+                case TagBack ignored -> configureNavigation(cell, Component.translatable(TAG_BACK_TOOLTIP),
+                        () -> openTagFromStart(null));
+                case TagGroup group -> {
+                    if (group.unlocked()) {
+                        configureNavigation(cell, Component.literal(group.id().toString()),
+                                () -> openTagFromStart(group.id()));
+                    }
+                }
+                case ChildTableEntry child -> {
+                    if (child.unlocked()) {
+                        configureNavigation(cell, child.displayName(), () -> navigationTarget = child.tableId());
+                        configureRecommendation(cell, "recommend:" + child.tableId(),
+                                () -> onRecommend.accept(SimulationAssistTarget.childTable(child.tableId())));
+                    }
+                }
+                case GridItem item -> {
+                    if (item.unlocked() && item.probability() instanceof Probability.NeedsCondition) {
+                        String storedKey = item.signature().toStoredKey();
+                        configureRecommendation(cell, "recommend:item:" + storedKey,
+                                () -> onRecommend.accept(SimulationAssistTarget.item(storedKey)));
+                    }
+                }
             }
         }
         controls.endUpdate();
+    }
+
+    private void configureNavigation(GridCell cell, Component label, Runnable select) {
+        configureHotspot(cell.key(), cell.bounds(), label, () -> {
+            select.run();
+            rebuildVisibleCells();
+            resetHoverState();
+            onNavigate.run();
+        });
+    }
+
+    private void configureRecommendation(GridCell cell, String key, Runnable recommend) {
+        configureHotspot(key, recommendationBounds(cell), ScenarioSession.text("recommend.title"), recommend);
+    }
+
+    private void configureHotspot(String key, UiRect bounds, Component label, Runnable action) {
+        UiControl control = controls.obtain(key);
+        control.setBounds(bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        JournalControls.configureHotspot(control, label, action);
     }
 
     public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
@@ -123,15 +142,24 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         if (cell == null) return null;
         UiPointerHit hit = controls.hitTest(x, y);
         if (hit == null) hit = UiPointerHit.leaf(this, x, y);
-        ItemStack stack = cell.item() != null && cell.item().unlocked()
-                ? cell.item().stack() : ItemStack.EMPTY;
+        ItemStack stack = cell.content() instanceof GridItem item && item.unlocked()
+                ? item.stack() : ItemStack.EMPTY;
         Object identity = stack.isEmpty() ? cell.key() : stack;
         hit = hit.within(this).withRow(this, cell.index(), identity, cell.bounds());
-        TooltipData data = tooltipData(cell, stack);
-        if (data != null) return hit.withPresentation((g, font, px, py) -> g.renderTooltip(font,
-                JournalTooltipBuilder.build(data), data.stack().getTooltipImage(), px, py));
-        List<Component> lines = navigationTooltip(x, y);
-        return lines == null ? hit : hit.withTextTooltip(lines, cell.bounds());
+        return switch (cell.content()) {
+            case GridItem item -> {
+                TooltipData data = tooltipData(item, stack);
+                yield hit.withPresentation((g, font, px, py) -> g.renderTooltip(font,
+                        JournalTooltipBuilder.build(data), data.stack().getTooltipImage(), px, py));
+            }
+            case TagBack(ResourceLocation tagId) -> hit.withTextTooltip(List.of(
+                    Component.literal(tagId.toString()),
+                    Component.translatable(TAG_BACK_TOOLTIP)),
+                    cell.bounds());
+            case TagGroup group -> hit.withTextTooltip(tagTooltip(group), cell.bounds());
+            case ChildTableEntry child -> hit.withTextTooltip(
+                    childTableTooltip(child, recommendationBounds(cell).contains(x, y)), cell.bounds());
+        };
     }
 
     /**
@@ -150,7 +178,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
      * 几何、业务身份及内容来自同一个单元投影。
      */
     private record GridCell(int index, UiRect bounds, GridContent content) {
-        Object key() {
+        String key() {
             return switch (content) {
                 case TagBack back -> "back:" + back.tagId();
                 case TagGroup tag -> "tag:" + tag.id();
@@ -158,40 +186,6 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                 case GridItem item -> "item:" + item.signature().toStoredKey();
             };
         }
-
-        Component name() {
-            return switch (content) {
-                case TagBack ignored ->
-                        Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_back_tooltip");
-                case TagGroup tag -> Component.literal(tag.id().toString());
-                case ChildTableEntry child -> child.displayName();
-                case GridItem item -> item.displayName();
-            };
-        }
-
-        @Nullable GridItem item() {
-            return content instanceof GridItem item ? item : null;
-        }
-
-        @Nullable TagGroup tag() {
-            return content instanceof TagGroup tag ? tag : null;
-        }
-
-        @Nullable ChildTableEntry child() {
-            return content instanceof ChildTableEntry child ? child : null;
-        }
-
-        boolean back() {
-            return content instanceof TagBack;
-        }
-    }
-
-    private int visibleCellCount() {
-        return visibleCells.size();
-    }
-
-    private @Nullable GridCell cell(int index) {
-        return index < 0 || index >= visibleCells.size() ? null : visibleCells.get(index);
     }
 
     private void rebuildVisibleCells() {
@@ -226,8 +220,9 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     }
 
     private @Nullable GridCell cellAt(double x, double y) {
-        return cell(GRID.indexAt(x - layout.rightPageX() - JournalLayout.GRID_LEFT_PAD,
-                y - layout.rightPageY() - JournalLayout.GRID_TOP, visibleCellCount()));
+        int index = GRID.indexAt(x - layout.rightPageX() - JournalLayout.GRID_LEFT_PAD,
+                y - layout.rightPageY() - JournalLayout.GRID_TOP, visibleCells.size());
+        return index < 0 ? null : visibleCells.get(index);
     }
 
     private static UiRect recommendationBounds(GridCell cell) {
@@ -235,19 +230,9 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         return new UiRect(r.right() - 13, r.y() + 1, 12, 13);
     }
 
-    private void activateCell(GridCell cell) {
-        if (cell.back()) {
-            activeTag = null;
-            pagination.reset();
-        } else if (cell.tag() != null) {
-            activeTag = cell.tag().id();
-            pagination.reset();
-        } else if (cell.child() != null) {
-            navigationTarget = cell.child().tableId();
-        }
-        rebuildVisibleCells();
-        resetHoverState();
-        onNavigate.run();
+    private void openTagFromStart(@Nullable ResourceLocation tag) {
+        activeTag = tag;
+        pagination.reset();
     }
 
     private static final int ICON_SIZE = 18;            // 略放大的物品图标尺寸
@@ -367,16 +352,14 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                     for (int position = 0; position < members.size(); position++) {
                         if (!members.get(position).signature().toStoredKey().equals(target)) continue;
                         if (!entry.getValue().unlocked()) return false;
-                        activeTag = entry.getKey();
-                        setPage(position / TAG_GROUP_MEMBERS_PER_PAGE);
+                        showPage(entry.getKey(), position / TAG_GROUP_MEMBERS_PER_PAGE);
                         return true;
                     }
                 }
             }
         }
         if (index < 0) return false;
-        activeTag = null;
-        setPage(index / JournalLayout.GRID_ITEMS_PER_PAGE);
+        showPage(null, index / JournalLayout.GRID_ITEMS_PER_PAGE);
         return true;
     }
 
@@ -396,9 +379,17 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
 
     // 直接设置页码（resize 后恢复用）
     public void setPage(int page) {
-        boolean changed = pagination.setPage(page);
+        showPage(activeTag, page);
+    }
+
+    private void showPage(@Nullable ResourceLocation tag, int page) {
+        boolean tagChanged = !Objects.equals(activeTag, tag);
+        activeTag = tag;
+        boolean pageChanged = pagination.setPage(page);
         rebuildVisibleCells();
-        if (changed) resetHoverState();
+        if (tagChanged || pageChanged) {
+            resetHoverState();
+        }
     }
 
     @Nullable
@@ -700,7 +691,6 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
 
     // 格式化数量为角标文本：<1000 原样，1K+ 用 1.2K/1.2M/1.2B 简写
     private static String formatCountBadge(int count) {
-        if (count < 0) return "";
         if (count < 1000) return Integer.toString(count);
         if (count < 1_000_000) return formatOneDecimal(count / 1000.0) + "K";
         if (count < 1_000_000_000) return formatOneDecimal(count / 1_000_000.0) + "M";
@@ -779,13 +769,11 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         return switch (uncertaintyLevel) {
             case PROBABILISTIC -> PROB_COLOR_PROBABILISTIC;
             case RUNTIME -> PROB_COLOR_RUNTIME;
-            default -> PROB_COLOR;
+            case NONE -> PROB_COLOR;
         };
     }
 
-    private TooltipData tooltipData(@Nullable GridCell cell, ItemStack stack) {
-        if (cell == null || cell.item() == null) return null;
-        GridItem item = cell.item();
+    private static TooltipData tooltipData(GridItem item, ItemStack stack) {
         if (!item.unlocked()) return new TooltipData(ItemStack.EMPTY, null, -1, null, List.of(), false,
                 LootConditionHandler.UncertaintyLevel.NONE, false, List.of(), 0, null, null, null);
         return new TooltipData(stack, item.tooltipHint(), item.count(), item.probability(), item.acquisitionPaths(),
@@ -800,26 +788,23 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         return target;
     }
 
-    @Nullable
-    private List<Component> navigationTooltip(double mouseX, double mouseY) {
-        GridCell cell = cellAt(mouseX, mouseY);
-        if (cell == null || cell.item() != null) return null;
-        if (cell.content() instanceof TagBack(ResourceLocation tagId))
-            return List.of(Component.literal(tagId.toString()),
-                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_back_tooltip"));
-        if (cell.tag() != null) {
-            TagGroup group = cell.tag();
-            if (!group.unlocked())
-                return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"));
-            return List.of(Component.literal(group.id().toString()).withStyle(TooltipBuilder.ACCENT),
-                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_progress", group.discoveredCount(), group.members().size()),
-                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_open"));
-        }
-        if (!(cell.content() instanceof ChildTableEntry child)) return null;
-        if (!child.unlocked())
+    private static List<Component> tagTooltip(TagGroup group) {
+        if (!group.unlocked()) {
             return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"));
-        if (recommendationBounds(cell).contains(mouseX, mouseY)) return List.of(
-                ScenarioSession.text("recommend.title"));
+        }
+        return List.of(Component.literal(group.id().toString()).withStyle(TooltipBuilder.ACCENT),
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_progress",
+                        group.discoveredCount(), group.members().size()),
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_open"));
+    }
+
+    private static List<Component> childTableTooltip(ChildTableEntry child, boolean recommendationHovered) {
+        if (!child.unlocked()) {
+            return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"));
+        }
+        if (recommendationHovered) {
+            return List.of(ScenarioSession.text("recommend.title"));
+        }
         return JournalTooltipBuilder.buildChildTable(child.displayName(), child.tableId(), child.probability(),
                 child.conditions(), child.luckAffected());
     }

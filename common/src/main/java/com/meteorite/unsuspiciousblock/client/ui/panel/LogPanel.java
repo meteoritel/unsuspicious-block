@@ -101,9 +101,9 @@ public final class LogPanel implements PagePanel, UiInputContainer {
                             CopyCoordinateButton.WIDTH, CopyCoordinateButton.HEIGHT);
                     CopyCoordinateButton.configure(copy, state.entry);
                     if (state.entry.hasNote()) {
-                        NoteBadge badge = noteBadge(bgX, y);
+                        UiRect hitBounds = noteBadge(bgX, y).hitBounds();
                         UiControl note = controls.obtain("note:" + state.entry.entryId());
-                        note.setBounds(badge.hitX(), badge.hitY(), badge.hitW(), badge.hitH());
+                        note.setBounds(hitBounds.x(), hitBounds.y(), hitBounds.width(), hitBounds.height());
                         Component label = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_edit_from_list_tooltip");
                         JournalControls.configureHotspot(note, label, List.of(label),
                                 () -> {
@@ -133,6 +133,12 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     // 空态等弱化文本：原字面量 #7A6247 在书页底色 #E8DCBC 上只有 4.20:1，改引语义色表 LABEL（5.03:1）
     private static final int MUTED_COLOR = UiTextScheme.PARCHMENT.label();
     private static final int SELECTED_TEXT_COLOR = JournalTextColors.SELECTED;
+    private static final Comparator<LogEntryState> ENTRY_TIME_ORDER = Comparator
+            .comparingLong((LogEntryState state) -> state.entry.lastUpdatedGameTime())
+            .thenComparingLong(state -> state.entry.lastUpdatedDayTime())
+            .thenComparingLong(state -> state.entry.createdGameTime())
+            .thenComparingLong(state -> state.entry.createdDayTime())
+            .thenComparing(state -> state.entry.entryId());
 
     // 备注图标点击回调（由外部 screen 设置，打开备注编辑界面）
     @Nullable
@@ -208,9 +214,8 @@ public final class LogPanel implements PagePanel, UiInputContainer {
 
     private JournalBookBackground.BookLayout layout;
     private final List<LogEntryState> allEntries = new ArrayList<>();
-    private final List<LogEntryState> filteredEntries = new ArrayList<>();
     private final List<DisplayRow> displayRows = new ArrayList<>();
-    // 分页几何缓存：只在 applyFilterAndSort 重建，render/handleClick 不再逐帧走一遍行高累加
+    // 分页区间随显示行重建，绘制和控件装配共用。
     private List<IntRange> pageRanges = List.of();
     // 已测宽度缓存：与行文案缓存同一失效事件（语言/字体实例、setData）
     private final PanelTextMetrics metrics = new PanelTextMetrics();
@@ -248,25 +253,25 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         this.allEntries.forEach(state -> availableIds.add(state.entry.entryId()));
         this.selectedEntryIds.retainAll(availableIds);
         this.metrics.clear();
-        applyFilterAndSort();
+        rebuildDisplayRows();
     }
 
     // 设置排序方向
     public void setSortDescending(boolean descending) {
         this.sortDescending = descending;
-        applyFilterAndSort();
+        rebuildDisplayRows();
     }
 
     // 设置分组方式
     public void setGroupMode(LogGrouper.GroupMode mode) {
         this.groupMode = mode;
-        applyFilterAndSort();
+        rebuildDisplayRows();
     }
 
     // 设置时间分组参考刻（仅玩家切换到日志页时调用一次）
     public void setReferenceGameTime(long gameTime) {
         this.referenceGameTime = gameTime;
-        applyFilterAndSort();
+        rebuildDisplayRows();
     }
 
     // 设置选中的日志条目 ID
@@ -317,80 +322,42 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         this.selectedEntryId = null;
     }
 
-    // 对全部条目执行排序和分组，结果写入 displayRows
-    private void applyFilterAndSort() {
+    private void rebuildDisplayRows() {
         controlsDirty = true;
-        this.filteredEntries.clear();
-        this.filteredEntries.addAll(this.allEntries);
-        // 时间排序：按 lastUpdated → created 优先级比较；降序时反转
-        Comparator<LogEntryState> cmp = Comparator
-                .comparingLong((LogEntryState s) -> s.entry.lastUpdatedGameTime())
-                .thenComparingLong(s -> s.entry.lastUpdatedDayTime())
-                .thenComparingLong(s -> s.entry.createdGameTime())
-                .thenComparingLong(s -> s.entry.createdDayTime())
-                .thenComparing(s -> s.entry.entryId());
-        if (this.sortDescending) {
-            cmp = cmp.reversed();
-        }
-        this.filteredEntries.sort(cmp);
+        List<LogEntryState> sortedEntries = new ArrayList<>(allEntries);
+        sortedEntries.sort(sortDescending ? ENTRY_TIME_ORDER.reversed() : ENTRY_TIME_ORDER);
 
-        // 构建 displayRows
-        this.displayRows.clear();
+        LinkedHashMap<String, List<LogEntryState>> groups = new LinkedHashMap<>();
         if (this.groupMode == LogGrouper.GroupMode.TIME) {
-            // 时间分组：桶顺序跟随排序方向——降序=1d→older（最新桶在前），升序=older→1d（最旧桶在前）
-            LogGrouper.TimeBucket[] bucketOrder = LogGrouper.TimeBucket.values();
-            LinkedHashMap<String, List<LogEntryState>> buckets = new LinkedHashMap<>();
-            int len = bucketOrder.length;
-            for (int i = 0; i < len; i++) {
-                LogGrouper.TimeBucket bucket = this.sortDescending
-                        ? bucketOrder[i]
-                        : bucketOrder[len - 1 - i];
-                buckets.put(bucket.key(), new ArrayList<>());
-            }
-            for (LogEntryState state : this.filteredEntries) {
-                String key = LogGrouper.groupKey(this.groupMode, state.entry, this.referenceGameTime);
-                buckets.computeIfAbsent(key, k -> new ArrayList<>()).add(state);
-            }
-            for (var entry : buckets.entrySet()) {
-                if (entry.getValue().isEmpty()) continue;
-                this.displayRows.add(new GroupHeaderRow(entry.getKey(), List.copyOf(entry.getValue())));
-                for (LogEntryState state : entry.getValue()) {
-                    this.displayRows.add(new EntryRow(state));
-                }
+            // 时间桶的顺序跟随排序方向，维度和群系则沿用条目首次出现的顺序。
+            List<LogGrouper.TimeBucket> buckets = List.of(LogGrouper.TimeBucket.values());
+            for (LogGrouper.TimeBucket bucket : sortDescending ? buckets : buckets.reversed()) {
+                groups.put(bucket.key(), new ArrayList<>());
             }
         } else if (this.groupMode == LogGrouper.GroupMode.NOTED) {
             // 已备注分组：固定 "已备注" 在前、"未备注" 在后
-            LinkedHashMap<String, List<LogEntryState>> groups = new LinkedHashMap<>();
             groups.put("yes", new ArrayList<>());
             groups.put("no", new ArrayList<>());
-            for (LogEntryState state : this.filteredEntries) {
-                String key = LogGrouper.groupKey(this.groupMode, state.entry, this.referenceGameTime);
-                groups.computeIfAbsent(key, k -> new ArrayList<>()).add(state);
+        }
+        for (LogEntryState state : sortedEntries) {
+            String key = LogGrouper.groupKey(groupMode, state.entry, referenceGameTime);
+            groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(state);
+        }
+
+        this.displayRows.clear();
+        for (var group : groups.entrySet()) {
+            List<LogEntryState> entries = group.getValue();
+            if (entries.isEmpty()) {
+                continue;
             }
-            for (var entry : groups.entrySet()) {
-                if (entry.getValue().isEmpty()) continue;
-                this.displayRows.add(new GroupHeaderRow(entry.getKey(), List.copyOf(entry.getValue())));
-                for (LogEntryState state : entry.getValue()) {
-                    this.displayRows.add(new EntryRow(state));
-                }
-            }
-        } else {
-            // 维度/群系分组：按数据顺序聚合
-            LinkedHashMap<String, List<LogEntryState>> groups = new LinkedHashMap<>();
-            for (LogEntryState state : this.filteredEntries) {
-                String key = LogGrouper.groupKey(this.groupMode, state.entry, this.referenceGameTime);
-                groups.computeIfAbsent(key, k -> new ArrayList<>()).add(state);
-            }
-            for (var entry : groups.entrySet()) {
-                this.displayRows.add(new GroupHeaderRow(entry.getKey(), List.copyOf(entry.getValue())));
-                for (LogEntryState state : entry.getValue()) {
-                    this.displayRows.add(new EntryRow(state));
-                }
+            this.displayRows.add(new GroupHeaderRow(group.getKey(), List.copyOf(entries)));
+            for (LogEntryState state : entries) {
+                this.displayRows.add(new EntryRow(state));
             }
         }
 
         this.pageRanges = buildPageRanges();
-        this.pagination.setPage(this.pagination.getPage());
+        this.pagination.pageCount();
     }
 
     @Override
@@ -581,10 +548,11 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         // 已备注标记：右下角绘制备注铅笔图集图标，悬停时高亮提示可点击编辑（几何与命中盒同一来源）
         if (state.entry.hasNote() && !this.batchSelectionMode) {
             NoteBadge badge = noteBadge(bgX, rowY);
-            boolean badgeHovered = pointer.allowed() && badge.hit(pointer.x(), pointer.y());
+            UiRect hitBounds = badge.hitBounds();
+            boolean badgeHovered = pointer.contains(hitBounds);
             if (badgeHovered) {
-                guiGraphics.fill(badge.hitX(), badge.hitY(), badge.hitX() + badge.hitW(),
-                        badge.hitY() + badge.hitH(), JournalLayout.LOG_ENTRY_NOTE_BADGE_BG_HOVER);
+                guiGraphics.fill(hitBounds.x(), hitBounds.y(), hitBounds.right(),
+                        hitBounds.bottom(), JournalLayout.LOG_ENTRY_NOTE_BADGE_BG_HOVER);
             }
             UiAtlas.icon(badgeHovered ? UiAtlas.Icon.NOTE_BADGE_HOVER : UiAtlas.Icon.NOTE_BADGE)
                     .render(guiGraphics, badge.x(), badge.y());
@@ -597,7 +565,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     }
 
     public boolean hasVisibleEntries() {
-        return !this.filteredEntries.isEmpty();
+        return !this.displayRows.isEmpty();
     }
 
     private int computePageCount() {
@@ -607,19 +575,15 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     /**
      * 备注铅笔图标的绘制位置与命中盒——绘制、悬停底色与点击命中共用同一几何来源（R-5）。
      */
-    private record NoteBadge(int x, int y, int hitX, int hitY, int hitW, int hitH) {
-        private boolean hit(double mouseX, double mouseY) {
-            return mouseX >= this.hitX && mouseX <= this.hitX + this.hitW
-                    && mouseY >= this.hitY && mouseY <= this.hitY + this.hitH;
-        }
+    private record NoteBadge(int x, int y, UiRect hitBounds) {
     }
 
     // 行内备注图标的唯一几何来源：绘制、悬停底色与命中盒都从这里取
     private static NoteBadge noteBadge(int bgX, int rowY) {
         int badgeX = bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH - UiAtlas.ICON_SIZE - 3;
         int badgeY = rowY + JournalLayout.LOG_ENTRY_STATE_HEIGHT - UiAtlas.ICON_SIZE - 2;
-        return new NoteBadge(badgeX, badgeY, badgeX - 1, badgeY - 1,
-                UiAtlas.ICON_SIZE + 2, UiAtlas.ICON_SIZE + 2);
+        return new NoteBadge(badgeX, badgeY,
+                new UiRect(badgeX - 1, badgeY - 1, UiAtlas.ICON_SIZE + 2, UiAtlas.ICON_SIZE + 2));
     }
 
     // 行文案按语言缓存：entry 数据不可变（位置/时间/维度都是值），同一实例只有语言会变。

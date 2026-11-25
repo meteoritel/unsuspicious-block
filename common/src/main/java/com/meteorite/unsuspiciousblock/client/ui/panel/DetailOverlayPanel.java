@@ -25,7 +25,6 @@ import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * 考古信息面板 —— 玩家个人进度：进度条 + 已发现物品列表 + 模组来源
@@ -236,37 +235,28 @@ public final class DetailOverlayPanel implements PagePanel {
         this.pagination.setPage(page);
     }
 
-    // 返回介绍页当前悬停的已发现物品，供 JEI 配方/用法查询。
-    private Optional<ItemStack> getHoveredItemStack(double mouseX, double mouseY) {
+    @Override
+    public UiPointerHit hitTest(double x, double y) {
         int leftX = this.layout.rightPageX() + 8;
         int contentWidth = this.layout.rightPageWidth() - 20;
         int listY = listStartY(this.layout.rightPageY() + JournalLayout.INTRO_TOP
                 + 14 + BAR_HEIGHT + 10);
-        if (mouseX < leftX || mouseX >= leftX + contentWidth || mouseY < listY) {
-            return Optional.empty();
+        if (x < leftX || x >= leftX + contentWidth) {
+            return null;
         }
         int maxVisibleItems = maxVisibleItems(listY);
-        int visibleIndex = UiRowMetrics.fixedRowIndex(mouseY - listY, ITEM_ROW_HEIGHT, ITEM_ROW_HEIGHT, maxVisibleItems);
-        if (visibleIndex < 0 || visibleIndex >= maxVisibleItems) {
-            return Optional.empty();
+        int visibleIndex = UiRowMetrics.fixedRowIndex(y - listY, ITEM_ROW_HEIGHT, ITEM_ROW_HEIGHT, maxVisibleItems);
+        if (visibleIndex < 0) {
+            return null;
         }
         int itemIndex = this.pagination.getPage() * maxVisibleItems + visibleIndex;
         if (itemIndex >= this.unlockedItems.size()) {
-            return Optional.empty();
+            return null;
         }
-        return Optional.of(this.unlockedItems.get(itemIndex).item.stack());
-    }
-
-    @Override
-    public UiPointerHit hitTest(double x, double y) {
-        ItemStack stack = getHoveredItemStack(x, y).orElse(ItemStack.EMPTY);
-        if (stack.isEmpty()) return null;
-        int leftX = this.layout.rightPageX() + 8;
-        int contentWidth = this.layout.rightPageWidth() - 20;
-        int listY = listStartY(this.layout.rightPageY() + JournalLayout.INTRO_TOP
-                + 14 + BAR_HEIGHT + 10);
-        int visibleIndex = UiRowMetrics.fixedRowIndex(y - listY, ITEM_ROW_HEIGHT, ITEM_ROW_HEIGHT,
-                maxVisibleItems(listY));
+        ItemStack stack = this.unlockedItems.get(itemIndex).item.stack();
+        if (stack.isEmpty()) {
+            return null;
+        }
         UiRect bounds = new UiRect(leftX, listY + visibleIndex * ITEM_ROW_HEIGHT,
                 contentWidth, ITEM_ROW_HEIGHT);
         return UiPointerHit.leaf(this, x, y).withRow(this, visibleIndex, stack, bounds)
