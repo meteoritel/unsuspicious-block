@@ -4,6 +4,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTypeDesc
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.ParameterKind;
@@ -169,6 +170,22 @@ public final class PathHintAnalyzer {
         }
         return assembleHints(new LinkedHashMap<>(), false, parameterDetails, scenarioConditions,
                 unresolvedConditions);
+    }
+
+    /**
+     * 为子表入口条目分析路径提示，同时纳入来自父表引用位置的入口幸运门槛与幸运敏感度。
+     */
+    public static List<PathHint> hintsForChildEntry(List<LootConditionInfo> conditions,
+                                                    @Nullable LuckGate entryLuckGate,
+                                                    boolean luckAffected) {
+        LuckGate normalized = entryLuckGate != null && entryLuckGate.isTrivial() ? null : entryLuckGate;
+        if (normalized == null && !luckAffected) {
+            return hintsForConditions(conditions);
+        }
+        return hintsFor(List.of(new LootAcquisitionPath(
+                null, null, conditions, List.of(),
+                LootConditionHandler.UncertaintyLevel.NONE,
+                luckAffected, normalized)));
     }
 
     private static List<PathHint> assembleHints(LinkedHashMap<String, Component> luckDetails,

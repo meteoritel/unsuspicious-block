@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.core.loottable.analysis;
 import java.util.function.DoublePredicate;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.OptionalDouble;
 
 /**
@@ -40,6 +41,142 @@ public final class LuckGateAnalysis {
             new LuckGate(false, OptionalDouble.empty(), true, OptionalDouble.empty());
 
     private LuckGateAnalysis() {
+    }
+
+    /**
+     * 沿整条获取链逐层合并幸运门槛。
+     * 祖先池与父级引用只要无法进入或依赖 {@code rolls == 0} 奖励抽取才能激活，其门槛均会限制整条路径；
+     * 叶子条目的奖励抽取门槛仍单独保留在 {@link LuckGate#bonusRollsGate()}。
+     */
+    public static LuckGate analyzePath(List<LuckSpec> specs) {
+        if (specs == null || specs.isEmpty()) {
+            return LuckGate.NONE;
+        }
+        return analyzeChain(specs.subList(0, specs.size() - 1), specs.getLast());
+    }
+
+    /** 合并完整链列表与已知叶子 {@code LuckSpec}（不依赖列表中叶子所处下标）。 */
+    public static LuckGate analyzeMergedPath(@Nullable LuckSpec leafSpec, List<LuckSpec> allSpecs) {
+        if (allSpecs == null || allSpecs.isEmpty()) {
+            return analyze(leafSpec);
+        }
+        LuckSpec leaf = leafSpec != null ? leafSpec : LuckSpec.DEFAULT;
+        LuckGate leafGate = analyze(leaf);
+        if (leafGate.impossible()) {
+            return unreachable();
+        }
+        boolean rangeLimited = leafGate.rangeLimited();
+        boolean hasMinLuck = leafGate.minLuck().isPresent();
+        double maxMinLuck = hasMinLuck ? leafGate.minLuck().getAsDouble() : Double.NEGATIVE_INFINITY;
+        boolean skippedLeaf = leafSpec == null;
+        for (LuckSpec spec : allSpecs) {
+            if (!skippedLeaf && spec.equals(leafSpec)) {
+                skippedLeaf = true;
+                continue;
+            }
+            LuckGate ancestorGate = analyze(spec);
+            if (ancestorGate.impossible()) {
+                return unreachable();
+            }
+            if (ancestorGate.rangeLimited()) {
+                rangeLimited = true;
+                continue;
+            }
+            OptionalDouble required = ancestorRequiredLuck(ancestorGate);
+            if (required.isPresent()) {
+                double value = required.getAsDouble();
+                maxMinLuck = hasMinLuck ? Math.max(maxMinLuck, value) : value;
+                hasMinLuck = true;
+            }
+        }
+        if (rangeLimited) {
+            return RANGE_LIMITED;
+        }
+        OptionalDouble minLuck = hasMinLuck ? OptionalDouble.of(maxMinLuck) : OptionalDouble.empty();
+        if (minLuck.isEmpty() && leafGate.bonusRollsGate().isEmpty()) {
+            return LuckGate.NONE;
+        }
+        return new LuckGate(false, minLuck, false, leafGate.bonusRollsGate());
+    }
+
+    /** 合并外层祖先序列与当前叶子/引用位置各自的 {@link LuckSpec}。 */
+    public static LuckGate analyzeChain(List<LuckSpec> ancestorSpecs, @Nullable LuckSpec leafSpec) {
+        LuckGate leafGate = analyze(leafSpec);
+        if (leafGate.impossible()) {
+            return unreachable();
+        }
+        boolean rangeLimited = leafGate.rangeLimited();
+        boolean hasMinLuck = leafGate.minLuck().isPresent();
+        double maxMinLuck = hasMinLuck ? leafGate.minLuck().getAsDouble() : Double.NEGATIVE_INFINITY;
+        if (ancestorSpecs != null) {
+            for (LuckSpec ancestor : ancestorSpecs) {
+                LuckGate ancestorGate = analyze(ancestor);
+                if (ancestorGate.impossible()) {
+                    return unreachable();
+                }
+                if (ancestorGate.rangeLimited()) {
+                    rangeLimited = true;
+                    continue;
+                }
+                OptionalDouble required = ancestorRequiredLuck(ancestorGate);
+                if (required.isPresent()) {
+                    double value = required.getAsDouble();
+                    maxMinLuck = hasMinLuck ? Math.max(maxMinLuck, value) : value;
+                    hasMinLuck = true;
+                }
+            }
+        }
+        if (rangeLimited) {
+            return RANGE_LIMITED;
+        }
+        OptionalDouble minLuck = hasMinLuck ? OptionalDouble.of(maxMinLuck) : OptionalDouble.empty();
+        if (minLuck.isEmpty() && leafGate.bonusRollsGate().isEmpty()) {
+            return LuckGate.NONE;
+        }
+        return new LuckGate(false, minLuck, false, leafGate.bonusRollsGate());
+    }
+
+    /** 合并指向同一子表的多个引用入口门槛：任一入口无门槛则整张子表无入口门槛，否则取最宽松入口。 */
+    public static LuckGate combineEntryGates(List<LuckGate> siteGates) {
+        if (siteGates == null || siteGates.isEmpty()) {
+            return LuckGate.NONE;
+        }
+        boolean anyReachable = false;
+        boolean anyRangeLimited = false;
+        LuckGate bestFinite = null;
+        double bestThreshold = Double.POSITIVE_INFINITY;
+        for (LuckGate gate : siteGates) {
+            if (gate == null || gate.isTrivial()) {
+                return LuckGate.NONE;
+            }
+            if (gate.impossible()) {
+                continue;
+            }
+            anyReachable = true;
+            if (gate.rangeLimited()) {
+                anyRangeLimited = true;
+                continue;
+            }
+            OptionalDouble required = ancestorRequiredLuck(gate);
+            if (required.isPresent() && required.getAsDouble() < bestThreshold) {
+                bestThreshold = required.getAsDouble();
+                bestFinite = gate;
+            }
+        }
+        if (!anyReachable) {
+            return unreachable();
+        }
+        if (bestFinite != null) {
+            return bestFinite;
+        }
+        return anyRangeLimited ? RANGE_LIMITED : LuckGate.NONE;
+    }
+
+    private static OptionalDouble ancestorRequiredLuck(LuckGate gate) {
+        if (gate.minLuck().isPresent() && gate.bonusRollsGate().isPresent()) {
+            return OptionalDouble.of(Math.max(gate.minLuck().getAsDouble(), gate.bonusRollsGate().getAsDouble()));
+        }
+        return gate.minLuck().isPresent() ? gate.minLuck() : gate.bonusRollsGate();
     }
 
     /** 判定单条路径的幸运门槛；{@code spec} 为空或与幸运无关时返回 {@link LuckGate#NONE}。 */

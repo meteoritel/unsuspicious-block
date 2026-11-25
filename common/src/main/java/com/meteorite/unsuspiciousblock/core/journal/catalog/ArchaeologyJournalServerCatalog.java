@@ -15,6 +15,8 @@ import java.util.Iterator;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.CompiledLootTable;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootTableCompiler;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootMechanismSupport;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGate;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGateAnalysis;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogGeneration.BaselineStatus;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogDisplayDerivation;
 import com.meteorite.unsuspiciousblock.core.loottable.injection.DeclaredInjectionExpansion.ExpandedTable;
@@ -415,8 +417,54 @@ public final class ArchaeologyJournalServerCatalog {
                 }));
         semanticEnchantments.forEach(id -> enchantments.get(ResourceKey.create(Registries.ENCHANTMENT, id))
                 .ifPresent(holder -> enchantmentLevels.putIfAbsent(id, holder.value().definition().maxLevel())));
+        CompiledLootTable compiled = session.compiledTables().get(tableId);
         return SimulationConstraintCatalog.build(plan, baseProfile, tools, toolSelectionAllowed,
-                enchantmentLevels, expansion.childEntryGates());
+                enchantmentLevels, expansion.childEntryGates(),
+                collectChildEntryLuckGates(compiled), collectLuckAffectedChildren(compiled));
+    }
+
+    /** 汇总本表直接引用各子表的入口幸运门槛（多处引用同一子表时取最宽松入口）。 */
+    private static Map<ResourceLocation, LuckGate> collectChildEntryLuckGates(
+            @Nullable CompiledLootTable compiled) {
+        if (compiled == null) {
+            return Map.of();
+        }
+        Map<ResourceLocation, List<LuckGate>> gatesByTarget = new LinkedHashMap<>();
+        for (CompiledLootTable.Event event : compiled.events()) {
+            if (event instanceof CompiledLootTable.ReferenceSite site) {
+                LuckGate siteGate = LuckGateAnalysis.analyzeChain(site.inheritedLuckSpecs(), site.luckSpec());
+                gatesByTarget.computeIfAbsent(site.target(), ignored -> new ArrayList<>()).add(siteGate);
+            }
+        }
+        Map<ResourceLocation, LuckGate> result = new LinkedHashMap<>();
+        for (Map.Entry<ResourceLocation, List<LuckGate>> entry : gatesByTarget.entrySet()) {
+            LuckGate combined = LuckGateAnalysis.combineEntryGates(entry.getValue());
+            if (!combined.isTrivial()) {
+                result.put(entry.getKey(), combined);
+            }
+        }
+        return result;
+    }
+
+    /** 收集受任意祖先池或引用权重幸运影响的直接子表 ID。 */
+    private static Set<ResourceLocation> collectLuckAffectedChildren(@Nullable CompiledLootTable compiled) {
+        if (compiled == null) {
+            return Set.of();
+        }
+        Set<ResourceLocation> affected = new LinkedHashSet<>();
+        for (CompiledLootTable.Event event : compiled.events()) {
+            if (event instanceof CompiledLootTable.ReferenceSite site && isSiteLuckAffected(site)) {
+                affected.add(site.target());
+            }
+        }
+        return affected;
+    }
+
+    private static boolean isSiteLuckAffected(CompiledLootTable.ReferenceSite site) {
+        if (site.luckAffected() || !site.luckSpec().luckNeutral()) {
+            return true;
+        }
+        return site.inheritedLuckSpecs().stream().anyMatch(spec -> !spec.luckNeutral());
     }
 
     public static CatalogTableDto clientTable(TableDefinition table) {

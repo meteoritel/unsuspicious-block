@@ -33,7 +33,7 @@ flowchart LR
 
 ### 1.1 多路径物品提示合并
 
-`ItemDefinitionAccumulator` 按 `Component` 抽象语法树（含翻译键与参数）而非渲染后文本对同签名路径的非空提示去重，按路径出现顺序使用本地化 `alternative_separator` 拼接（展示名分歧同样按组件结构判定）。不同路径若拥有相同的数量区间（如内置河流淘洗金粒的两条 `1-3` 路径）仅展示一次；不同区间则展示为 `数量: 1-3 / 数量: 3-6`。该说明表达各独立路径的函数效果，而非单次抽取总产量。
+`ItemDefinitionAccumulator` 按 `Component` 抽象语法树（含翻译键与参数）而非渲染后文本对同签名路径的非空提示去重，按路径出现顺序使用本地化 `alternative_separator` 拼接（展示名分歧同样按组件结构判定）。不同路径若拥有相同的数量区间（如内置海岸沉船木桶的两条宝箱路径）仅展示一次；不同区间则展示为 `数量: 1-3 / 数量: 3-6`。该说明表达各独立路径的函数效果，而非单次抽取总产量。
 
 ## 2. 签名机制
 
@@ -126,7 +126,7 @@ flowchart TD
 
 ### 3.3 逐路径幸运门槛 (`LuckGateAnalysis`)
 
-[`LuckGateAnalysis`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/analysis/LuckGateAnalysis.java) 基于编译期采集的 [`LuckSpec`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/analysis/LuckSpec.java) 计算每条获取路径的最小幸运门槛（独立保存在 `LootAcquisitionPath.luckGate`，不跨路径合并）：
+[`LuckGateAnalysis`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/analysis/LuckGateAnalysis.java) 基于编译期采集的 [`LuckSpec`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/analysis/LuckSpec.java) 计算每条获取路径的最小幸运门槛（独立保存在 `LootAcquisitionPath.luckGate`，不跨不同获取路径合并，但沿单条引用链经 `analyzeMergedPath` / `analyzeChain` 向上传递父级池与 `ReferenceSite` 的解锁及 `rolls == 0` 门控门槛）：
 
 1. **原版真实公式**：同时校验权重竞争 `max(floor(weight + quality * luck), 0) >= 1` 与额外抽取 `floor(bonus_rolls * luck) >= 1`。
 2. **网格对齐与回验**：代数求得候选解后向上对齐至 `0.01` 步长，并带入原版两条公式回验，必要时按 `0.01` 递增直至通过。
@@ -135,7 +135,7 @@ flowchart TD
 
 ### 3.4 嵌套子表观测
 
-`NestedLootTableMixin` 在模拟作用域中直接观测父表抽取时触发的直接子表调用，使用 `IdentityHashMap` 与轻量列表统计“该直接子表至少产出一个物品”的次数（不通过物品签名反推，防止父子表共用物品产生归因错位）。NeoForge GLM 触发嵌套子表时同样显式写入观测作用域。子表入口与普通物品共用 `PathHintAnalyzer` 展示派生，其条件树取自服务端计算的共同前置条件与注入门槛（`RuntimeLootLinks`）。
+`NestedLootTableMixin` 在模拟作用域中直接观测父表抽取时触发的直接子表调用，使用 `IdentityHashMap` 与轻量列表统计“该直接子表至少产出一个物品”的次数（不通过物品签名反推，防止父子表共用物品产生归因错位）。NeoForge GLM 触发嵌套子表时同样显式写入观测作用域。子表入口与普通物品共用 `PathHintAnalyzer` 展示派生（`hintsForChildEntry`）：其条件树取自服务端计算的共同前置条件与注入门槛（`RuntimeLootLinks`），入口幸运门槛与敏感度取自服务端内部目录 `SimulationConstraintCatalog`（`childEntryLuckGates` / `luckAffectedChildren`，由 `ArchaeologyJournalServerCatalog` 汇总直接 `ReferenceSite` 产生）。
 
 ## 4. 主线程调度与性能观测
 

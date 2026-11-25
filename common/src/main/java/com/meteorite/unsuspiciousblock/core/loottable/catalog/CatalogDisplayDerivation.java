@@ -100,8 +100,10 @@ public final class CatalogDisplayDerivation {
                     .filter(child -> child.tableId().equals(childTable))
                     .findFirst().orElseThrow().conditions();
             conditions = CatalogProjection.mergeConditions(conditions, entryGates);
-            List<PathHint> hints = PathHintAnalyzer.hintsForConditions(
-                    CatalogProjection.mergeConditions(childTableConditions(raw, childTable), entryGates));
+            List<PathHint> hints = PathHintAnalyzer.hintsForChildEntry(
+                    CatalogProjection.mergeConditions(childTableConditions(raw, childTable), entryGates),
+                    constraint.childEntryLuckGates().get(childTable),
+                    constraint.luckAffectedChildren().contains(childTable));
             List<ScenarioProbability> scenarioProbabilities = new ArrayList<>();
             for (Map.Entry<String, LootProbabilityData.InputMeasurement> entry : byScenario.entrySet()) {
                 SimulatedValue measured = entry.getValue().children().get(childTable);

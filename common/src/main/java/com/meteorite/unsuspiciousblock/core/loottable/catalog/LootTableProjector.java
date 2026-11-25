@@ -352,7 +352,7 @@ public final class LootTableProjector {
                         resolved.tooltipHint(), resolved.signature()));
         accumulator.merge(resolved.displayName(), resolved.tooltipHint(), new LootAcquisitionPath(
                 sourceChildTable, path.sourceItemTag(), resolved.conditions(), inheritedConditions,
-                functionUncertainty, luckAffected, luckGate(path), luckSpecs, resolved.functions()));
+                functionUncertainty, luckAffected, luckGate(path, luckSpecs), luckSpecs, resolved.functions()));
     }
 
     // 函数自身条件原位保存到对应函数节点；描述通道已给出条件时以它为准，避免出现两份条件来源
@@ -380,11 +380,11 @@ public final class LootTableProjector {
         return List.copyOf(result);
     }
 
-    // 逐路径最小幸运门槛（决策 34）。只读本条目自身与其所在池的数值：父池的 rolls 只增加抽取次数，
-    // quality 只在本条目与同池兄弟竞争时起作用，因此叶子事件的 LuckSpec 就是全部输入，
-    // 不需要把"整条路径上任意池都受幸运影响"那个布尔（luckAffected）也揉进来。
-    private static LuckGate luckGate(CompiledLootTable.ItemPath path) {
-        LuckGate gate = LuckGateAnalysis.analyze(path.luckSpec());
+    // 逐路径最小幸运门槛（决策 34）。合并整条引用链上所有祖先池与父级引用位置的 LuckSpec：
+    // 若任意父级池权重需幸运解锁或依赖 rolls == 0 的 bonus_rolls 才能运行，整条路径均受其限制，
+    // 同时保留叶子条目自身的 bonusRollsGate。
+    private static LuckGate luckGate(CompiledLootTable.ItemPath path, List<LuckSpec> luckSpecs) {
+        LuckGate gate = LuckGateAnalysis.analyzeMergedPath(path.luckSpec(), luckSpecs);
         return gate.isTrivial() ? null : gate;
     }
 

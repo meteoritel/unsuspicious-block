@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGate;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.ParameterKind;
 import com.meteorite.unsuspiciousblock.core.loottable.graph.RuntimeLootLinks;
@@ -34,10 +35,28 @@ public record SimulationConstraintCatalog(
         Map<ResourceLocation, Integer> enchantmentMaxLevels,
         List<Integer> sampleCounts,
         Map<ResourceLocation, List<LootConditionInfo>> childEntryGates,
+        Map<ResourceLocation, LuckGate> childEntryLuckGates,
+        Set<ResourceLocation> luckAffectedChildren,
         SimulationProfile baseProfile) {
+
+    /** 兼容旧调用方：默认不携带子表入口幸运门槛与幸运敏感集合。 */
+    public SimulationConstraintCatalog(
+            List<ConditionOption> conditions,
+            boolean scenarioBudgetExhausted,
+            List<ToolOption> tools,
+            boolean toolSelectionAllowed,
+            Map<ResourceLocation, Integer> enchantmentMaxLevels,
+            List<Integer> sampleCounts,
+            Map<ResourceLocation, List<LootConditionInfo>> childEntryGates,
+            SimulationProfile baseProfile) {
+        this(conditions, scenarioBudgetExhausted, tools, toolSelectionAllowed, enchantmentMaxLevels,
+                sampleCounts, childEntryGates, Map.of(), Set.of(), baseProfile);
+    }
 
 
     public SimulationConstraintCatalog {
+        childEntryLuckGates = childEntryLuckGates == null ? Map.of() : Map.copyOf(childEntryLuckGates);
+        luckAffectedChildren = luckAffectedChildren == null ? Set.of() : Set.copyOf(luckAffectedChildren);
         conditions = List.copyOf(conditions);
         tools = List.copyOf(tools);
         enchantmentMaxLevels = Map.copyOf(enchantmentMaxLevels);
@@ -54,6 +73,23 @@ public record SimulationConstraintCatalog(
     /**
      * 由条件规划结果与表内容派生约束目录，保留工具与附魔的签发范围。
      */
+    /** 根据编译分析与展开结果构建完整的模拟约束目录，包含子表入口幸运门槛与幸运敏感集合。 */
+    public static SimulationConstraintCatalog build(SimulationScenarioPlanner.ConditionPlan plan,
+                                                    SimulationProfile baseProfile,
+                                                    Map<ResourceLocation, String> subtreeTools,
+                                                    boolean toolSelectionAllowed,
+                                                    Map<ResourceLocation, Integer> enchantmentMaxLevels,
+                                                    Map<ResourceLocation, List<LootConditionInfo>> childEntryGates,
+                                                    Map<ResourceLocation, LuckGate> childEntryLuckGates,
+                                                    Set<ResourceLocation> luckAffectedChildren) {
+        SimulationConstraintCatalog base = build(plan, baseProfile, subtreeTools, toolSelectionAllowed,
+                enchantmentMaxLevels, childEntryGates);
+        return new SimulationConstraintCatalog(
+                base.conditions(), base.scenarioBudgetExhausted(), base.tools(), base.toolSelectionAllowed(),
+                base.enchantmentMaxLevels(), base.sampleCounts(), base.childEntryGates(),
+                childEntryLuckGates, luckAffectedChildren, base.baseProfile());
+    }
+
     public static SimulationConstraintCatalog build(SimulationScenarioPlanner.ConditionPlan plan,
                                                     SimulationProfile baseProfile,
                                                     Map<ResourceLocation, String> subtreeTools,
