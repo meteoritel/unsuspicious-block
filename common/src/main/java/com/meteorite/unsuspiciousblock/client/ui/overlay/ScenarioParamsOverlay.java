@@ -3,11 +3,16 @@ package com.meteorite.unsuspiciousblock.client.ui.overlay;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.control.UiListView;
 import com.meteorite.meteosuikit.api.control.UiOverlay;
-import com.meteorite.meteosuikit.api.control.UiWidgetRow;
-import com.meteorite.meteosuikit.api.layout.UiLinearLayout;
 import com.meteorite.meteosuikit.api.control.UiTextInput;
+import com.meteorite.meteosuikit.api.control.UiWidgetRow;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
-import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.input.UiAction;
+import com.meteorite.meteosuikit.api.input.UiChildren;
+import com.meteorite.meteosuikit.api.input.UiInputContainer;
+import com.meteorite.meteosuikit.api.input.UiInputTarget;
+import com.meteorite.meteosuikit.api.input.UiPointer;
+import com.meteorite.meteosuikit.api.input.UiPointerHit;
+import com.meteorite.meteosuikit.api.layout.UiLinearLayout;
 import com.meteorite.meteosuikit.api.number.UiNumberField;
 import com.meteorite.meteosuikit.api.number.UiNumberPolicy;
 import com.meteorite.meteosuikit.api.number.UiScalarSlider;
@@ -39,7 +44,11 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -54,9 +63,8 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
     private final SimulationOptions options;
     private final Map<ResourceLocation, Integer> levels = new LinkedHashMap<>();
     private final UiChildren<UiInputTarget> children = new UiChildren<>();
-    private final UiOverlay overlay = new UiOverlay(this);
     private final UiLayer layer;
-    private final UiChildren<UiControl> actions = new UiChildren<>();
+    private final UiChildren<UiControl> levelActions = new UiChildren<>();
     private final UiControl decrease;
     private final UiControl increase;
     private final UiWidgetRow confirmationRow = new UiWidgetRow(4, UiWidgetRow.Alignment.START);
@@ -68,7 +76,6 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
     private final UiListView<ResourceLocation> enchantments;
     private UiRect bounds = new UiRect(0, 0, 1, 1);
     private @Nullable Component error;
-    private String query = "";
 
     public ScenarioParamsOverlay(JournalOverlays owner, ResourceLocation table, List<String> conditions,
                                  SimulationOptions options, ScenarioParams current) {
@@ -119,49 +126,46 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         enchantments.setEmptyMessage(Component.empty());
         search = new UiTextInput(() -> UnsuspiciousUiTheme.PARCHMENT, font, text("params.search"));
         search.setEnabled(!options.enchantments().isEmpty());
-        search.setOnValueChanged(() -> {
-            query = search.value();
-            filterEnchantments();
-        });
+        search.setOnValueChanged(this::filterEnchantments);
         filterEnchantments();
         decrease = button(font, text("params.decrease"), () -> changeLevel(-ENCHANTMENT_LEVEL_STEP));
         increase = button(font, text("params.increase"), () -> changeLevel(ENCHANTMENT_LEVEL_STEP));
+        levelActions.add(decrease);
+        levelActions.add(increase);
         UiControl calculate = button(font, text("params.apply_calculate"), () -> submitDraft(session::applyDraftAndSimulate));
         calculate.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
-        List<UiControl> confirmationActions = List.of(calculate,
-                button(font, text("params.apply_only"), () -> submitDraft(session::applyDraft)),
-                button(font, Component.translatable("gui.cancel"), owner::close));
-        for (UiControl action : confirmationActions) {
-            actions.remove(action);
-            confirmationRow.add(action, UiLinearLayout.Child.remain());
-        }
+        confirmationRow.add(calculate, UiLinearLayout.Child.remain());
+        confirmationRow.add(button(font, text("params.apply_only"), () -> submitDraft(session::applyDraft)),
+                UiLinearLayout.Child.remain());
+        confirmationRow.add(button(font, Component.translatable("gui.cancel"), owner::close),
+                UiLinearLayout.Child.remain());
         children.add(luck);
         children.add(tools);
         children.add(search);
         children.add(enchantments);
-        children.add(actions);
+        children.add(levelActions);
         children.add(confirmationRow);
-        layer = overlay.layer(() -> new UiRect(0, 0, owner.width(), owner.height()), 0x88000000,
+        layer = new UiOverlay(this).layer(() -> new UiRect(0, 0, owner.width(), owner.height()), 0x88000000,
                 (graphics, rowFont, pointer, depth) -> render(graphics, rowFont, pointer));
     }
 
-    private UiControl button(Font font, Component label, UiAction action) {
+    private static UiControl button(Font font, Component label, UiAction action) {
         UiControl button = new UiControl();
         button.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.SECONDARY);
         button.setFocusable(true);
         button.configure(font, label, null, List.of(label), action);
-        actions.add(button);
         return button;
     }
 
     private void filterEnchantments() {
         ResourceLocation selected = enchantments.selectedItem();
-        String needle = query.trim().toLowerCase(Locale.ROOT);
+        String needle = search.value().trim().toLowerCase(Locale.ROOT);
         List<ResourceLocation> filtered = options.enchantments().keySet().stream()
                 .filter(id -> needle.isEmpty() || id.toString().toLowerCase(Locale.ROOT).contains(needle)
                         || enchantmentName(id).toLowerCase(Locale.ROOT).contains(needle))
                 .sorted(Comparator.comparing(ScenarioParamsOverlay::enchantmentName)).toList();
-        enchantments.setItems(filtered).setSelectedIndex(selected == null ? (filtered.isEmpty() ? -1 : 0) : filtered.indexOf(selected));
+        int selectedIndex = selected == null ? 0 : filtered.indexOf(selected);
+        enchantments.setItems(filtered).setSelectedIndex(selectedIndex);
     }
 
     private void changeLevel(int delta) {
@@ -269,7 +273,9 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
             JournalPalette.drawEmptyState(graphics, font, enchantments.bounds(), emptyIcon, text("params.no_enchantments"));
         }
         graphics.fill(bounds.x() + 8, bounds.bottom() - 35, bounds.right() - 8, bounds.bottom() - 34, JournalPalette.SEPARATOR);
-        for (UiControl action : actions) action.render(graphics, font, pointer);
+        for (UiControl action : levelActions) {
+            action.render(graphics, font, pointer);
+        }
         confirmationRow.render(graphics, font, pointer);
         if (error != null)
             graphics.drawString(font, error, bounds.x() + 8, bounds.bottom() - 45, UiTextScheme.PARCHMENT.negative(), false);

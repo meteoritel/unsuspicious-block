@@ -8,7 +8,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Consumer;
 
-/** 笔记场景覆盖面的所有权；输入、遮罩与焦点由实际 kit 层负责。 */
+/** 管理笔记当前打开的场景浮层或灯箱的生命周期。 */
 public final class JournalOverlays {
     /** 场景覆盖面的准备与关闭业务。 */
     public interface Surface {
@@ -18,51 +18,71 @@ public final class JournalOverlays {
         default void closed() { }
     }
 
+    private record ActiveSurface(UiLayer layer, Consumer<Font> prepare, Runnable invalidateResources, Runnable closed) {
+    }
+
     private int width = 1;
     private int height = 1;
-    private @Nullable UiLayer active;
-    private Consumer<Font> prepare = font -> { };
-    private Runnable closed = () -> { };
-    private Runnable invalidateResources = () -> { };
+    private @Nullable ActiveSurface active;
 
-    public int width() { return width; }
-    public int height() { return height; }
-    public void setBounds(int width, int height) { this.width = width; this.height = height; }
-    public boolean isOpen() { return active != null; }
-    public @Nullable UiLayer layer() { return active; }
+    public int width() {
+        return width;
+    }
 
+    public int height() {
+        return height;
+    }
+
+    public void setBounds(int width, int height) {
+        this.width = width;
+        this.height = height;
+    }
+
+    public boolean isOpen() {
+        return active != null;
+    }
+
+    public @Nullable UiLayer layer() {
+        return active == null ? null : active.layer();
+    }
+
+    /** 关闭当前覆盖面并打开场景浮层，将 Esc 接到同一关闭流程。 */
     public void open(Surface surface) {
-        open(surface.layer(), surface::prepare, surface::closed);
-        invalidateResources = surface::invalidateResources;
+        open(new ActiveSurface(surface.layer(), surface::prepare, surface::invalidateResources, surface::closed));
     }
 
+    /** 关闭当前覆盖面并打开灯箱，每次准备时使用最新视口尺寸。 */
     public void open(UiLightbox lightbox) {
-        open(lightbox.layer(), font -> lightbox.prepare(font, width, height), lightbox::onClosed);
-        invalidateResources = lightbox::invalidateResources;
+        open(new ActiveSurface(lightbox.layer(), font -> lightbox.prepare(font, width, height),
+                lightbox::invalidateResources, lightbox::onClosed));
     }
 
-    private void open(UiLayer layer, Consumer<Font> prepare, Runnable closed) {
+    private void open(ActiveSurface next) {
         close();
-        active = layer;
-        this.prepare = prepare;
-        this.closed = closed;
-        layer.scope().setEscape(this::close);
+        active = next;
+        next.layer().scope().setEscape(this::close);
     }
 
-    public void prepare(Font font) { prepare.accept(font); }
-    public void invalidateResources() { invalidateResources.run(); }
-
-    public void close() {
-        UiLayer previous = active;
-        active = null;
-        Runnable cleanup = closed;
-        prepare = font -> { };
-        closed = () -> { };
-        invalidateResources = () -> { };
-        if (previous != null) {
-            previous.scope().interaction().end(UiInteractionSession.EndReason.CANCEL);
-            cleanup.run();
+    public void prepare(Font font) {
+        if (active != null) {
+            active.prepare().accept(font);
         }
     }
 
+    public void invalidateResources() {
+        if (active != null) {
+            active.invalidateResources().run();
+        }
+    }
+
+    /** 先解除活动层的所有权，避免交互或清理回调再次关闭同一覆盖面。 */
+    public void close() {
+        ActiveSurface previous = active;
+        if (previous == null) {
+            return;
+        }
+        active = null;
+        previous.layer().scope().interaction().end(UiInteractionSession.EndReason.CANCEL);
+        previous.closed().run();
+    }
 }
