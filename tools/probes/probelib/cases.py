@@ -198,6 +198,96 @@ class Case:
             self.record['diagnosticCaptureError'] = str(error)
 
 
+def creative_tab(case):
+    case.client
+    case.action('server', 'Probe.command("gamemode creative UsbProbe")')
+    case.defer('server', 'Probe.command("gamemode survival UsbProbe")')
+    case.expect('玩家进入创造模式', lambda: case.client.evaluate(
+        'Probe.client().gameMode.hasInfiniteItems()'), bool, expected=True)
+    expression = """(function() {
+        var client = Probe.client();
+        var screen = new (Probe.type('net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen'))(
+            client.player, client.level.enabledFeatures(), false);
+        client.setScreen(screen);
+        var tabs = Probe.type('net.minecraft.core.registries.BuiltInRegistries').CREATIVE_MODE_TAB;
+        var id = Probe.id('unsuspiciousblock:main');
+        var tab = tabs.get(id);
+        if (tab === null) return {registered: false, items: []};
+        tab.buildContents(new (Probe.type('net.minecraft.world.item.CreativeModeTab$ItemDisplayParameters'))(
+            client.level.enabledFeatures(), client.player.canUseGameMasterBlocks(), client.level.registryAccess()));
+        var items = [], iterator = tab.getDisplayItems().iterator();
+        while (iterator.hasNext()) items.push(String(Probe.type('net.minecraft.core.registries.BuiltInRegistries')
+            .ITEM.getKey(iterator.next().getItem())));
+        var registry = Probe.type('net.neoforged.neoforge.common.CreativeModeTabRegistry');
+        var sortedTabs = registry.getSortedCreativeModeTabs(), defaults = registry.getDefaultTabs();
+        var pageTabs = [], currentGroup = [], tabPage = null, tabIndex = 0;
+        var sortedIterator = sortedTabs.iterator();
+        while (sortedIterator.hasNext()) {
+            var sortedTab = sortedIterator.next();
+            if (!sortedTab.hasAnyItems()) continue;
+            if (sortedTab === tab) tabPage = Math.floor(tabIndex / 10) + 1;
+            currentGroup.push(sortedTab);
+            tabIndex++;
+            if (currentGroup.length === 10 || !sortedIterator.hasNext()) {
+                var pageTabIds = [];
+                for (var i = 0; i < currentGroup.length; i++) {
+                    if (currentGroup[i].shouldDisplay()) pageTabIds.push(String(tabs.getKey(currentGroup[i])));
+                }
+                var defaultIterator = defaults.iterator();
+                while (defaultIterator.hasNext()) {
+                    var defaultTab = defaultIterator.next();
+                    if (defaultTab.shouldDisplay()) pageTabIds.push(String(tabs.getKey(defaultTab)));
+                }
+                pageTabs.push(pageTabIds);
+                currentGroup = [];
+            }
+        }
+        var currentPageTabs = [], currentIterator = screen.getCurrentPage().getVisibleTabs().iterator();
+        while (currentIterator.hasNext()) currentPageTabs.push(String(tabs.getKey(currentIterator.next())));
+        var selectedPage = null;
+        for (var pageIndex = 0; pageIndex < pageTabs.length; pageIndex++) {
+            if (String(pageTabs[pageIndex]) === String(currentPageTabs)) selectedPage = pageIndex + 1;
+        }
+        return {registered: true, visible: tab.shouldDisplay(), title: String(tab.getDisplayName().getString()),
+            icon: String(Probe.type('net.minecraft.core.registries.BuiltInRegistries').ITEM.getKey(tab.getIconItem().getItem())),
+            items: items, pages: pageTabs,
+            selectedPage: selectedPage, tabPage: tabPage};
+    })()"""
+    snapshot = case.client.evaluate(expression)
+    case.record['creativeTabPages'] = dict(pages=snapshot.pop('pages'), selectedPage=snapshot.pop('selectedPage'),
+                                            tabPage=snapshot.pop('tabPage'))
+    case.check('creative-tab-items', snapshot, dict(
+        registered=True, visible=True, title='不可疑方块', icon='unsuspiciousblock:pottery_wheel',
+        items=['unsuspiciousblock:archaeology_journal', 'unsuspiciousblock:unsuspicious_sand',
+               'unsuspiciousblock:unsuspicious_gravel', 'unsuspiciousblock:pottery_wheel',
+               'unsuspiciousblock:unfired_decorated_pot', 'unsuspiciousblock:unfired_decorated_sherd',
+               'unsuspiciousblock:suspicious_reader', 'unsuspiciousblock:archaeological_shovel',
+               'unsuspiciousblock:copper_pan', 'unsuspiciousblock:gold_pan', 'unsuspiciousblock:obsidian_pan',
+               'unsuspiciousblock:ancient_coin', 'unsuspiciousblock:lost_page', 'unsuspiciousblock:base_page',
+               'unsuspiciousblock:spark_dust', 'unsuspiciousblock:rewind_dust', 'unsuspiciousblock:eye_of_cat',
+               'unsuspiciousblock:specimen_box', 'unsuspiciousblock:hand_of_cat',
+               'unsuspiciousblock:purrmint', 'unsuspiciousblock:purrmint_seeds']))
+    case.action('client', '(function() { var screen = Probe.client().screen; '
+                'screen.mouseClicked(362, 72, 0); screen.mouseReleased(362, 72, 0); return true; })()')
+    visible_tabs = case.client.evaluate("""(function() {
+        var tabs = Probe.type('net.minecraft.core.registries.BuiltInRegistries').CREATIVE_MODE_TAB;
+        var result = [], iterator = Probe.client().screen.getCurrentPage().getVisibleTabs().iterator();
+        while (iterator.hasNext()) result.push(String(tabs.getKey(iterator.next())));
+        return result;
+    })()""")
+    case.equal('第二页可见本模组标签', 'unsuspiciousblock:main' in visible_tabs, True)
+    case.record['creativeTabPageTwo'] = visible_tabs
+    case.action('client', 'Probe.dismissNotifications()')
+    path = case.runtime.directory / 'creative-tab.png'
+    case.action('client', f'Probe.capture({json.dumps(str(path))})')
+    capture = wait_for(lambda: case.client.evaluate('Probe.captureResult()'), lambda value: value is not None)
+    case.equal('创造栏截图 Screen', capture['screen'], 'net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen')
+    case.equal('截图世界', capture['dimension'], 'minecraft:overworld')
+    case.equal('PNG 原始尺寸', png_dimensions(path), [capture['width'], capture['height']])
+    capture['relative'] = path.name
+    case.record['screenshots'].append(capture)
+
+
 def png_dimensions(path):
     data = path.read_bytes()
     if data[:8] != b'\x89PNG\r\n\x1a\n':
