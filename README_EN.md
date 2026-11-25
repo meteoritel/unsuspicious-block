@@ -1,51 +1,40 @@
 # Unsuspicious Block
 
-**Unsuspicious Block** is a Minecraft mod about archaeology, loot collection, and documenting discoveries. It adds tools for scanning and quickly excavating suspicious blocks, plus an Archaeology Journal that grows into a detailed record of loot, probabilities, locations, and excavation history.
+**Unsuspicious Block** is an archaeology exploration and discovery mod for Minecraft `1.21.1`. It adds tools for scanning and quickly excavating suspicious blocks, an Archaeology Journal for tracking loot sources, conditions, drop odds, and coordinates, plus river and Nether panning, pottery duplication, ancient plants, and structure rewinding.
 
 > 中文版: [README](README.md)
 
-<!-- SCREENSHOT PLACEHOLDER
-File: docs/image/readme/overview.png
-Scene: Hold a Suspicious Reader in a Trail Ruins site with highlighted suspicious blocks visible. Put the Archaeology Journal and Archaeological Shovel on the hotbar.
-Suggested format: 16:9, 1920x1080, debug overlay hidden, HUD visible.
-Replace the placeholder below with: ![Unsuspicious Block overview](docs/image/readme/overview.png)
--->
-
 ![Unsuspicious Block overview](docs/image/readme/overview.png)
 
-## Requirements
+## Requirements & Dependencies
 
 | Item | Support |
 |---|---|
 | Minecraft | 1.21.1 |
+| Current Baseline | 1.6.0 |
 | Loader | Fabric 0.17.0+ / NeoForge 21.1.221+ |
 | Java | 21 |
-| Current version | 1.5.2 |
-| Multiplayer | Install on both client and server |
-| License | MIT |
+| Multiplayer | Required on both client and server |
+| License | [MIT](LICENSE.txt) |
 
-The Fabric build requires [Fabric API](https://modrinth.com/mod/fabric-api). The NeoForge build has no additional required dependency.
+- **Fabric**: Requires [Fabric API](https://modrinth.com/mod/fabric-api).
+- **NeoForge**: No additional required mods.
+- **UI Library Dependency**: Built with [Meteo's UI Kit](https://github.com/meteoritel/meteo-s-ui-kit) (`0.1.0-rc1`). Release JARs bundle the library automatically, so players do not need a separate download; see its repository for source builds and UI library details.
 
-## What the Mod Offers
+## Content Overview
 
-- **[Archaeology Journal](https://github.com/meteoritel/unsuspicious-block/wiki/Archaeology-Journal)**: Records discovered loot tables, item probabilities, coordinates, and excavation history, while progressing archaeology challenges.
-- **[Suspicious Reader & Archaeological Shovel](https://github.com/meteoritel/unsuspicious-block/wiki/Reader-and-Shovel)**: Scan suspicious blocks to reveal their loot, then extract it instantly; area scans also highlight nearby suspicious blocks and unopened loot containers.
-- **[Lost Pages & Enchantments](https://github.com/meteoritel/unsuspicious-block/wiki/Lost-Pages-and-Enchantments)**: Forge Lost Pages found through archaeology into enchanted books carrying four exploration- and collection-oriented enchantments.
-- **[Eye of Cat](https://github.com/meteoritel/unsuspicious-block/wiki/Eye-of-Cat)**: Reveals hidden details in the enchanting table, anvil, and grindstone.
-- **[Specimen Box](https://github.com/meteoritel/unsuspicious-block/wiki/Specimen-Box)**: A portable 5-slot container that keeps carry-on effects of compatible items inside active.
-- **[Decorated Pottery Wheel](https://github.com/meteoritel/unsuspicious-block/wiki/Pottery-Wheel)**: Duplicates decorated sherds, crafts decorated pots, and supports hopper automation.
-- **[Unsuspicious Blocks](https://github.com/meteoritel/unsuspicious-block/wiki/Unsuspicious-Blocks)**: Seal items inside sand or gravel disguised as suspicious blocks -- perfect for pranking your friends.
-
-- **[Purrmint](docs/wiki/en-Purrmint.md)**: Mature plants and potted Purrmint provide a cubic aura through walls, causing creepers and phantoms to avoid the area and targets within it.
+- **Exploration & Tracking**: [Archaeology Journal](https://github.com/meteoritel/unsuspicious-block/wiki/en-Archaeology-Journal), [Suspicious Reader & Archaeological Shovel](https://github.com/meteoritel/unsuspicious-block/wiki/en-Reader-and-Shovel), [Eye of Cat](https://github.com/meteoritel/unsuspicious-block/wiki/en-Eye-of-Cat), [Specimen Box](https://github.com/meteoritel/unsuspicious-block/wiki/en-Specimen-Box)
+- **Gathering, Crafting & World Features**: [Lost Pages & Enchantments](https://github.com/meteoritel/unsuspicious-block/wiki/en-Lost-Pages-and-Enchantments), [Fishing & Panning](https://github.com/meteoritel/unsuspicious-block/wiki/en-Fishing-and-Panning), [Decorated Pottery Wheel](https://github.com/meteoritel/unsuspicious-block/wiki/en-Pottery-Wheel), [Unsuspicious Blocks](https://github.com/meteoritel/unsuspicious-block/wiki/en-Unsuspicious-Blocks), [Purrmint](https://github.com/meteoritel/unsuspicious-block/wiki/en-Purrmint), [Spark Dust & Rewind Dust](https://github.com/meteoritel/unsuspicious-block/wiki/en-Spark-and-Rewind-Dust)
 
 ## Documentation
 
-- **[Player Wiki](https://github.com/meteoritel/unsuspicious-block/wiki)**: Installation, getting started, detailed mechanics for each system, optional integrations, and FAQ.
-- **[Developer Docs](docs/dev/README.md)**: Architecture overview and per-subsystem design documents, aimed at contributors and modders.
+- **[Player Wiki](https://github.com/meteoritel/unsuspicious-block/wiki/en-Home)**: Installation, getting started, detailed feature guides, compatibility, and FAQ (source files in [docs/wiki/en-Home.md](docs/wiki/en-Home.md)).
+- **[Developer Docs](docs/dev/README.md)**: Multi-loader architecture, subsystem docs, and build workflows for contributors and modders.
+- **[Changelog](CHANGELOG.md)**: Release notes and version history.
 
 ## Links
 
 - [CurseForge](https://www.curseforge.com/minecraft/mc-mods/unsuspicious-block)
 - [Source Code](https://github.com/meteoritel/unsuspicious-block)
+- [Meteo's UI Kit](https://github.com/meteoritel/meteo-s-ui-kit)
 - [Issue Tracker](https://github.com/meteoritel/unsuspicious-block/issues)
-- [MIT License](LICENSE.txt)
