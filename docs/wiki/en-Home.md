@@ -14,6 +14,7 @@ Unsuspicious Block adds exploration tools and a discovery journal to Minecraft a
 - **Suspicious Reader**: Scans the area for suspicious blocks or loot containers.
 - **Archaeology Shovel**: Quickly clears sand/gravel to dig out suspicious blocks.
 - **Lost Pages & Enchantments**: Discover four exploration- and collection-oriented enchantments through archaeology.
+- **Fishing Dredging and Panning**: Dredge shipwreck finds from open water and pan sediment and minerals from rivers and Nether lava.
 - **Eye of Cat**: Reveals otherwise hidden information in enchanting tables, anvils, and grindstones.
 - **Specimen Box**: Carry five item slots, and let some items inside take effect while carried.
 - **Pottery Wheel**: Duplicate pottery sherds, craft decorated pots, and supports hopper automation.
@@ -26,11 +27,12 @@ Unsuspicious Block adds exploration tools and a discovery journal to Minecraft a
 3. [Archaeology Journal](en-Archaeology-Journal)
 4. [Suspicious Reader & Archaeology Shovel](en-Reader-and-Shovel)
 5. [Lost Pages and Enchantments](en-Lost-Pages-and-Enchantments)
-6. [Eye of Cat](en-Eye-of-Cat)
-7. [Specimen Box](en-Specimen-Box)
-8. [Pottery Wheel](en-Pottery-Wheel)
-9. [Unsuspicious Blocks](en-Unsuspicious-Blocks)
-10. [Purrmint](en-Purrmint)
+6. [Fishing and Panning](en-Fishing-and-Panning)
+7. [Eye of Cat](en-Eye-of-Cat)
+8. [Specimen Box](en-Specimen-Box)
+9. [Pottery Wheel](en-Pottery-Wheel)
+10. [Unsuspicious Blocks](en-Unsuspicious-Blocks)
+11. [Purrmint](en-Purrmint)
 
 ## Supported Environments
 

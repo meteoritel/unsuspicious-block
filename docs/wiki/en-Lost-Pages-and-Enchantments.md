@@ -4,7 +4,7 @@ Lost Pages connect archaeology exploration to four dedicated enchantments. Every
 
 ## Obtaining Lost Pages
 
-Lost Pages have an 8% chance to appear in the rare archaeology loot pool of Trail Ruins. The Archaeology Journal records them once you discover the relevant loot.
+Lost Pages have an 8% chance to appear in the rare archaeology loot pool of Trail Ruins, and can also be recovered by panning in rivers (especially with high-luck Gold Pan runs). The Archaeology Journal records them once you discover the relevant loot.
 
 ## Crafting Base Pages
 
@@ -32,7 +32,7 @@ The output is a random enchanted book. The result may be:
 
 | Enchantment | Applies to | Effect |
 |---|---|---|
-| Mud Dredging I–III | Fishing Rod | While fishing, a chance to dredge up an extra treasure: 20% at level I, +10% per additional level. Extra finds in swamps favor higher-value treasures. |
+| Mud Dredging I–III | Fishing Rod | Fishing can dredge up one extra item: 20% at level I, +10% per additional level. Shallow water pulls basic silt debris, while open water adds regional drift cargo, inland freshwater finds, coastal sherds/shipwreck barrels, or focused swamp loot. |
 | Textile Recovery | Shears | Shearing sheep drops an extra 1–3 string. |
 | Precision Excavation I–III | Brush | When brushing suspicious blocks, a chance to double that brush's loot: 28%, 44%, and 60% respectively. |
 | Fossil Hunter | Pickaxe | Mining naturally generated bone blocks has a 50% chance to grant extra fossil loot. The possible rewards vary by dimension. |

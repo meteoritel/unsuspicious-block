@@ -14,6 +14,7 @@ Unsuspicious Block 为 Minecraft 的考古内容增加了更完整的探索工�
 - **可疑解析仪**：扫描范围内是否存在可疑方块或战利品箱。
 - **考古铲**：快速清理沙子/沙砾以挖出可疑方块。
 - **失落书页与附魔**：通过考古发现获得四种面向探索和收集的附魔。
+- **钓鱼打捞与淘盘淘洗**：从开阔水域打捞沉船器物，在河流和下界熔岩中淘取沉积物与矿物。
 - **猫之瞳**：查看附魔台、铁砧和砂轮中原本隐藏的信息。
 - **标本箱**：携带五格物品，并让箱内部分物品保持随身生效。
 - **纹饰陶轮台**：复制纹饰陶片、制作纹饰陶罐，并支持漏斗自动化。
@@ -26,11 +27,12 @@ Unsuspicious Block 为 Minecraft 的考古内容增加了更完整的探索工�
 3. [考古笔记](zh-Archaeology-Journal)
 4. [可疑解析仪与考古铲](zh-Reader-and-Shovel)
 5. [失落书页与附魔](zh-Lost-Pages-and-Enchantments)
-6. [猫之瞳](zh-Eye-of-Cat)
-7. [标本箱](zh-Specimen-Box)
-8. [纹饰陶轮台](zh-Pottery-Wheel)
-9. [不可疑方块](zh-Unsuspicious-Blocks)
-10. [咕噜荆芥](zh-Purrmint)
+6. [钓鱼打捞与淘盘淘洗](zh-Fishing-and-Panning)
+7. [猫之瞳](zh-Eye-of-Cat)
+8. [标本箱](zh-Specimen-Box)
+9. [纹饰陶轮台](zh-Pottery-Wheel)
+10. [不可疑方块](zh-Unsuspicious-Blocks)
+11. [咕噜荆芥](zh-Purrmint)
 
 ## 支持环境
 
