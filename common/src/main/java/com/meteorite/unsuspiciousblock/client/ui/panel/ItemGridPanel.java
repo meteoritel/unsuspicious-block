@@ -24,6 +24,8 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.ScenarioAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
@@ -148,17 +150,18 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         hit = hit.within(this).withRow(this, cell.index(), identity, cell.bounds());
         return switch (cell.content()) {
             case GridItem item -> {
-                TooltipData data = tooltipData(item, stack);
-                yield hit.withPresentation((g, font, px, py) -> g.renderTooltip(font,
-                        JournalTooltipBuilder.build(data), data.stack().getTooltipImage(), px, py));
+                if (item.unlocked() && item.probability() instanceof Probability.NeedsCondition
+                        && recommendationBounds(cell).contains(x, y)) {
+                    Component name = item.displayName() != null ? item.displayName() : stack.getHoverName();
+                    yield JournalRichTooltip.attach(hit, JournalTooltipBuilder.buildRecommendRich(name));
+                }
+                yield JournalRichTooltip.attach(hit, JournalTooltipBuilder.buildRich(tooltipData(item, stack)));
             }
-            case TagBack(ResourceLocation tagId) -> hit.withTextTooltip(List.of(
-                    Component.literal(tagId.toString()),
-                    Component.translatable(TAG_BACK_TOOLTIP)),
-                    cell.bounds());
-            case TagGroup group -> hit.withTextTooltip(tagTooltip(group), cell.bounds());
-            case ChildTableEntry child -> hit.withTextTooltip(
-                    childTableTooltip(child, recommendationBounds(cell).contains(x, y)), cell.bounds());
+            case TagBack(ResourceLocation tagId) ->
+                    JournalRichTooltip.attach(hit, JournalTooltipBuilder.buildTagBackRich(tagId));
+            case TagGroup group -> JournalRichTooltip.attach(hit, tagTooltipSpec(group));
+            case ChildTableEntry child -> JournalRichTooltip.attach(hit,
+                    childTableTooltipSpec(child, recommendationBounds(cell).contains(x, y)));
         };
     }
 
@@ -788,24 +791,33 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         return target;
     }
 
-    private static List<Component> tagTooltip(TagGroup group) {
+    private static JournalTooltipSpec tagTooltipSpec(TagGroup group) {
         if (!group.unlocked()) {
-            return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"));
+            return JournalTooltipSpec.builder()
+                    .header(UiAtlas.UNKNOWN_ITEM,
+                            Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"),
+                            TooltipBuilder.LABEL, null)
+                    .line(Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.undiscovered_hint")
+                            .withStyle(TooltipBuilder.HINT))
+                    .build();
         }
-        return List.of(Component.literal(group.id().toString()).withStyle(TooltipBuilder.ACCENT),
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_progress",
-                        group.discoveredCount(), group.members().size()),
-                Component.translatable("screen.unsuspiciousblock.archaeology_journal.tag_group_open"));
+        return JournalTooltipBuilder.buildTagRich(group.id(), group.discoveredCount(), group.members().size());
     }
 
-    private static List<Component> childTableTooltip(ChildTableEntry child, boolean recommendationHovered) {
+    private static JournalTooltipSpec childTableTooltipSpec(ChildTableEntry child, boolean recommendationHovered) {
         if (!child.unlocked()) {
-            return List.of(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"));
+            return JournalTooltipSpec.builder()
+                    .header(UiAtlas.UNKNOWN_ITEM,
+                            Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"),
+                            TooltipBuilder.LABEL, null)
+                    .line(Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.undiscovered_hint")
+                            .withStyle(TooltipBuilder.HINT))
+                    .build();
         }
         if (recommendationHovered) {
-            return List.of(ScenarioSession.text("recommend.title"));
+            return JournalTooltipBuilder.buildRecommendRich(child.displayName());
         }
-        return JournalTooltipBuilder.buildChildTable(child.displayName(), child.tableId(), child.probability(),
+        return JournalTooltipBuilder.buildChildTableRich(child.displayName(), child.tableId(), child.probability(),
                 child.conditions(), child.luckAffected());
     }
 

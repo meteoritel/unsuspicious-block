@@ -30,10 +30,14 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.ScenarioAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.ScenarioBranch;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ProbabilityFormat;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -83,6 +87,8 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
     private boolean documentDirty = true;
     private Language language;
     private List<UiNode> conditionTree = List.of();
+    private Map<List<Component>, JournalTooltipSpec> documentRichTooltips = Map.of();
+    private final Map<UiControl, JournalTooltipSpec> controlRichTooltips = new LinkedHashMap<>();
     private @Nullable ScenarioTableSnapshot renderedSnapshot;
     private BiConsumer<String, String> locateTarget = (kind, target) -> {
     };
@@ -127,8 +133,28 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
     }
 
     @Override
-    public UiPointerHit hitTest(double x, double y) {
-        return UiInputContainer.super.hitTest(x, y);
+    public @Nullable UiPointerHit hitTest(double x, double y) {
+        UiPointerHit hit = UiInputContainer.super.hitTest(x, y);
+        if (hit == null) {
+            return null;
+        }
+        for (var entry : controlRichTooltips.entrySet()) {
+            if (hit.owns(entry.getKey())) {
+                return JournalRichTooltip.attach(hit, entry.getValue());
+            }
+        }
+        if (conditions != null && hit.owns(conditions) && hit.tooltip() != null) {
+            JournalTooltipSpec spec = documentRichTooltips.get(hit.tooltip().tooltip());
+            if (spec != null) {
+                return JournalRichTooltip.attach(hit, spec);
+            }
+        }
+        return hit;
+    }
+
+    @Nullable
+    JournalTooltipSpec richTooltip(List<Component> plainLines) {
+        return documentRichTooltips.get(plainLines);
     }
 
     @Override
@@ -287,6 +313,8 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
     private void configureUnavailable(Font font, UiDocumentView conditionView) {
         conditionTree = List.of(new UiNode.Row(ScenarioSession.text("unavailable"),
                 UiTextScheme.PARCHMENT.label()));
+        documentRichTooltips = Map.of();
+        controlRichTooltips.clear();
         conditionView.setContent(conditionTree);
         for (UiControl control : controls) {
             control.configure(font, Component.empty(), UiTextScheme.PARCHMENT.body(), null, List.of(), null);
@@ -300,16 +328,19 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         ResourceLocation currentTable = structure.id();
         var choice = snapshot.choice();
         var params = choice.params();
+        controlRichTooltips.clear();
         for (UiControl control : controls) {
             control.setVisible(true);
             control.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.SECONDARY);
         }
 
-        conditionTree = ScenarioPageBuilder.buildConditions(snapshot, options,
+        var built = ScenarioPageBuilder.buildConditionsWithTooltips(snapshot, options,
                 () -> JournalClientConnection.scenario().clearNotes(),
                 () -> JournalClientConnection.scenario().select(currentTable, List.of(), params),
                 conditionId -> JournalClientConnection.scenario().toggleCondition(currentTable, conditionId),
                 locateTarget);
+        conditionTree = built.nodes();
+        documentRichTooltips = built.richTooltips();
         conditionView.setContent(conditionTree);
 
         ResourceLocation toolId = params.toolId();
@@ -320,41 +351,94 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
                 break;
             }
         }
-        List<Component> paramsTooltip = new ArrayList<>();
-        paramsTooltip.add(ScenarioSession.text("params.current", toolName,
-                params.luck(), params.sampleCount()).copy().withStyle(TooltipBuilder.BODY));
-        params.toolEnchantments().forEach((id, level) -> paramsTooltip.add(
-                ScenarioSession.text("params.enchant_level",
-                        ScenarioParamsOverlay.enchantmentName(id), level).copy().withStyle(TooltipBuilder.ACCENT)));
+        ItemStack toolStack = new ItemStack(BuiltInRegistries.ITEM.get(toolId));
+        UiIcon toolIcon = new UiIcon.Item(toolStack);
 
+        JournalTooltipSpec.Builder paramsSpec = JournalTooltipSpec.builder()
+                .header(UiAtlas.icon(UiAtlas.Icon.PARAMS), ScenarioSession.text("params.title"),
+                        TooltipBuilder.TITLE, null)
+                .metrics(List.of(
+                        new JournalTooltipSpec.MetricChip(toolIcon, toolName, TooltipBuilder.BODY, false),
+                        new JournalTooltipSpec.MetricChip(UiAtlas.LUCK_ICON,
+                                ScenarioSession.text("params.luck_short", ProbabilityFormat.formatLuck(params.luck())),
+                                TooltipBuilder.ACCENT, true)));
+        if (!params.toolEnchantments().isEmpty()) {
+            List<JournalTooltipSpec.MetricChip> enchChips = new ArrayList<>();
+            params.toolEnchantments().forEach((id, level) -> enchChips.add(new JournalTooltipSpec.MetricChip(
+                    null,
+                    ScenarioSession.text("params.enchant_level", ScenarioParamsOverlay.enchantmentName(id), level),
+                    TooltipBuilder.ACCENT, true)));
+            paramsSpec.metrics(enchChips);
+        }
+        paramsSpec.footer(null, clickAction(), TooltipBuilder.ACCENT, ScenarioSession.text("params.tooltip_open"));
+        JournalTooltipSpec builtParamsSpec = paramsSpec.build();
+
+        JournalTooltipSpec summarySpec = JournalTooltipSpec.builder()
+                .header(toolIcon, toolName, TooltipBuilder.BODY, null)
+                .line(ScenarioSession.text("params.readonly_hint").copy().withStyle(TooltipBuilder.LABEL))
+                .build();
         summary.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
         summary.configure(font, Component.empty(), JournalTextColors.NAME,
-                new UiIcon.Item(new ItemStack(BuiltInRegistries.ITEM.get(toolId))),
-                List.of(toolName.copy().withStyle(TooltipBuilder.BODY)), null);
+                toolIcon, summarySpec.plainLines(), null);
+        controlRichTooltips.put(summary, summarySpec);
+
+        JournalTooltipSpec luckSpec = JournalTooltipSpec.builder()
+                .header(UiAtlas.LUCK_ICON,
+                        ScenarioSession.text("params.luck_short", ProbabilityFormat.formatLuck(params.luck())),
+                        TooltipBuilder.ACCENT, null)
+                .line(ScenarioSession.text("params.luck_description").copy().withStyle(TooltipBuilder.LABEL))
+                .line(ScenarioSession.text("params.readonly_hint").copy().withStyle(TooltipBuilder.HINT))
+                .build();
         configureValue(font, luck, UiAtlas.LUCK_ICON, "params.luck_short",
-                Float.toString(params.luck()));
+                ProbabilityFormat.formatLuck(params.luck()), luckSpec);
+
         enchantments.setVisible(showEnchantments);
         if (showEnchantments) {
+            JournalTooltipSpec.Builder enchSpec = JournalTooltipSpec.builder()
+                    .header(ScenarioSession.text("params.attribute.enchantments"), TooltipBuilder.TITLE,
+                            new JournalTooltipSpec.Pill(
+                                    ScenarioSession.text("params.attribute.enchantment_count",
+                                            params.toolEnchantments().size()),
+                                    params.toolEnchantments().isEmpty() ? TooltipBuilder.LABEL : TooltipBuilder.ACCENT));
+            if (params.toolEnchantments().isEmpty()) {
+                enchSpec.line(ScenarioSession.text("params.readonly_hint").copy().withStyle(TooltipBuilder.LABEL));
+            } else {
+                params.toolEnchantments().forEach((id, level) -> enchSpec.line(
+                        ScenarioSession.text("params.enchant_level",
+                                ScenarioParamsOverlay.enchantmentName(id), level).copy().withStyle(TooltipBuilder.ACCENT)));
+            }
             configureValue(font, enchantments, null, "params.enchantments_short",
-                    Integer.toString(params.toolEnchantments().size()));
+                    Integer.toString(params.toolEnchantments().size()), enchSpec.build());
         }
 
+        JournalTooltipSpec probeSpec = JournalTooltipSpec.builder()
+                .header(UiAtlas.SYNC_PLAYER, ScenarioSession.text("probe.button"), TooltipBuilder.TITLE, null)
+                .line(ScenarioSession.text("probe.hint").copy().withStyle(TooltipBuilder.LABEL))
+                .footer(null, clickAction(), TooltipBuilder.ACCENT, ScenarioSession.text("probe.short"))
+                .build();
         probeButton.configure(font, Component.empty(), UiAtlas.SYNC_PLAYER,
-                List.of(ScenarioSession.text("probe.button").copy().withStyle(TooltipBuilder.TITLE),
-                        ScenarioSession.text("probe.hint").copy().withStyle(TooltipBuilder.LABEL)),
+                probeSpec.plainLines(),
                 () -> JournalClientConnection.scenario().requestPlayerProbe(currentTable));
         probeButton.setAccessibleName(ScenarioSession.text("probe.button"));
         probeButton.setEnabled(!JournalClientConnection.scenario().assistPending());
+        controlRichTooltips.put(probeButton, probeSpec);
 
-        paramsButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.PARAMS), paramsTooltip,
+        paramsButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.PARAMS),
+                builtParamsSpec.plainLines(),
                 () -> overlays.open(new ScenarioParamsOverlay(overlays, currentTable, choice.conditions(),
                         options, params)));
         paramsButton.setAccessibleName(ScenarioSession.text("params.title"));
+        controlRichTooltips.put(paramsButton, builtParamsSpec);
 
         configureCalculateButton(font, snapshot);
 
+        JournalTooltipSpec expandSpec = JournalTooltipSpec.builder()
+                .header(UiAtlas.icon(UiAtlas.Icon.EXPAND), ScenarioSession.text("frame.expand"),
+                        TooltipBuilder.TITLE, null)
+                .footer(null, clickAction(), TooltipBuilder.ACCENT, ScenarioSession.text("frame.expand_hint"))
+                .build();
         expandButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.EXPAND),
-                List.of(ScenarioSession.text("frame.expand").copy().withStyle(TooltipBuilder.BODY)),
+                expandSpec.plainLines(),
                 () -> {
                     var content = ScenarioExpandedOverlay.create(this, font);
                     UiLightbox lightbox = new UiLightbox(ScenarioExpandedOverlay.LABELS, content, overlays::close);
@@ -364,37 +448,71 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
                     overlays.open(lightbox);
                 });
         expandButton.setAccessibleName(ScenarioSession.text("frame.expand"));
+        controlRichTooltips.put(expandButton, expandSpec);
     }
 
     private void configureCalculateButton(Font font, ScenarioTableSnapshot snapshot) {
         String status = snapshot.status();
+        boolean pending = switch (status) {
+            case "pending", "querying", "retrieving" -> true;
+            default -> false;
+        };
+        boolean canCalculate = switch (status) {
+            case "uncomputed", "query_failed", "available" -> true;
+            default -> false;
+        };
         String label = switch (status) {
             case "cached" -> "view_drops_ready";
             case "uncomputed", "failed", "query_failed" -> "calculate";
             default -> "results.status." + status;
         };
-        List<Component> tooltip = switch (status) {
-            case "failed" -> List.of(ScenarioSession.text("failure." + snapshot.failure())
-                    .copy().withStyle(TooltipBuilder.NEGATIVE));
-            case "cached" -> List.of(ScenarioSession.text("view_drops").copy().withStyle(TooltipBuilder.TITLE),
-                    ScenarioSession.text("cached_hint").copy().withStyle(TooltipBuilder.LABEL));
-            default -> List.of(ScenarioSession.text("calculate").copy().withStyle(TooltipBuilder.TITLE),
-                    ScenarioSession.text(status).copy().withStyle(TooltipBuilder.LABEL));
-        };
+        JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder();
+        switch (status) {
+            case "failed" -> {
+                spec.header(UiAtlas.statusBadge(status), ScenarioSession.text("calculate"), TooltipBuilder.NEGATIVE,
+                        new JournalTooltipSpec.Pill(ScenarioSession.text("results.status.failed"), TooltipBuilder.NEGATIVE));
+                spec.line(ScenarioSession.text("failure." + snapshot.failure()).copy().withStyle(TooltipBuilder.NEGATIVE));
+                spec.footer(null, clickAction(), TooltipBuilder.ACCENT, ScenarioSession.text("calculate_action"));
+            }
+            case "cached" -> {
+                spec.header(UiAtlas.statusBadge(status), ScenarioSession.text("view_drops"), TooltipBuilder.POSITIVE,
+                        new JournalTooltipSpec.Pill(ScenarioSession.text("results.status.cached"), TooltipBuilder.POSITIVE));
+                spec.line(ScenarioSession.text("cached_hint").copy().withStyle(TooltipBuilder.LABEL));
+                spec.footer(null, clickAction(), TooltipBuilder.ACCENT, ScenarioSession.text("view_drops"));
+            }
+            default -> {
+                ChatFormatting pillColor = pending ? TooltipBuilder.ACCENT : TooltipBuilder.LABEL;
+                spec.header(UiAtlas.statusBadge(status), ScenarioSession.text("calculate"), TooltipBuilder.TITLE,
+                        new JournalTooltipSpec.Pill(ScenarioSession.text("results.status." + status), pillColor));
+                spec.line(ScenarioSession.text(status).copy().withStyle(TooltipBuilder.LABEL));
+                if (canCalculate) {
+                    spec.footer(null, clickAction(), TooltipBuilder.ACCENT, ScenarioSession.text("calculate_action"));
+                }
+            }
+        }
+        JournalTooltipSpec builtSpec = spec.build();
         UiAction action = "cached".equals(status) ? () -> viewDrops.run()
                 : () -> JournalClientConnection.scenario().request(snapshot.structure().id(), true);
         calculateButton.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
-        calculateButton.configure(font, ScenarioSession.text(label), UiAtlas.statusBadge(status), tooltip, action);
-        calculateButton.setEnabled(!List.of("pending", "querying", "retrieving").contains(status));
+        calculateButton.configure(font, ScenarioSession.text(label), UiAtlas.statusBadge(status),
+                builtSpec.plainLines(), action);
+        calculateButton.setEnabled(!pending);
+        controlRichTooltips.put(calculateButton, builtSpec);
     }
 
-    private static void configureValue(Font font, UiControl control, @Nullable UiIcon icon, String key, String value) {
+    private void configureValue(Font font, UiControl control, @Nullable UiIcon icon, String key, String value,
+                                JournalTooltipSpec spec) {
         Component full = ScenarioSession.text(key, value);
         int iconReserve = icon == null ? 0 : icon.width() + 4;
         Component label = font.width(full) <= control.bounds().width() - 4 - iconReserve
                 ? full : Component.literal(value);
         control.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
-        control.configure(font, label, icon, List.of(full.copy().withStyle(TooltipBuilder.BODY)), null);
+        control.configure(font, label, icon, spec.plainLines(), null);
+        controlRichTooltips.put(control, spec);
+    }
+
+    private static Component clickAction() {
+        return Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.click_action");
     }
 
     static void renderConditionBackground(GuiGraphics graphics, UiDocumentTarget target, boolean selected) {

@@ -27,7 +27,11 @@ import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LuckGateAnalysis;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
@@ -290,13 +294,43 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         int toolIndex = hit.rowIndex(tools);
         if (toolIndex >= 0) {
             ToolOption tool = tools.items().get(toolIndex);
-            hit = hit.withTextTooltip(tool.predicateText() == null ? List.of(tool.displayName()) : List.of(tool.displayName(), tool.predicateText()), tools.bounds());
+            ItemStack toolStack = new ItemStack(BuiltInRegistries.ITEM.get(tool.id()));
+            boolean selected = toolIndex == tools.selectedIndex();
+            JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder()
+                    .itemHeader(toolStack, tool.displayName(), TooltipBuilder.BODY,
+                            selected ? new JournalTooltipSpec.Pill(text("params.selected"), TooltipBuilder.POSITIVE) : null);
+            if (tool.predicateText() != null) {
+                spec.line(tool.predicateText().copy().withStyle(TooltipBuilder.LABEL));
+            }
+            if (JournalTooltipSpec.showAdvancedIds()) {
+                spec.line(Component.literal(tool.id().toString()).withStyle(TooltipBuilder.HINT));
+            }
+            JournalTooltipSpec built = spec.build();
+            return JournalRichTooltip.attach(hit.withTextTooltip(built.plainLines(), tools.bounds()), built).within(this);
         }
         int enchantmentIndex = hit.rowIndex(enchantments);
-        if (enchantmentIndex >= 0)
-            hit = hit.withTextTooltip(List.of(Component.literal(enchantmentName(enchantments.items().get(enchantmentIndex)))), enchantments.bounds());
-        if (hit.owns(luck)) hit = hit.withTextTooltip(List.of(text("params.luck_description"),
-                text("params.luck_slider")), luck.bounds());
+        if (enchantmentIndex >= 0) {
+            ResourceLocation enchId = enchantments.items().get(enchantmentIndex);
+            int level = levels.getOrDefault(enchId, 0);
+            int maxLevel = options.enchantments().getOrDefault(enchId, 0);
+            JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder()
+                    .header(Component.literal(enchantmentName(enchId)), TooltipBuilder.ACCENT,
+                            new JournalTooltipSpec.Pill(Component.literal(level + "/" + maxLevel),
+                                    level > 0 ? TooltipBuilder.POSITIVE : TooltipBuilder.LABEL));
+            if (JournalTooltipSpec.showAdvancedIds()) {
+                spec.line(Component.literal(enchId.toString()).withStyle(TooltipBuilder.HINT));
+            }
+            JournalTooltipSpec built = spec.build();
+            return JournalRichTooltip.attach(hit.withTextTooltip(built.plainLines(), enchantments.bounds()), built).within(this);
+        }
+        if (hit.owns(luck)) {
+            JournalTooltipSpec built = JournalTooltipSpec.builder()
+                    .header(UiAtlas.LUCK_ICON, text("params.luck"), TooltipBuilder.TITLE, null)
+                    .line(text("params.luck_description").copy().withStyle(TooltipBuilder.LABEL))
+                    .line(text("params.luck_slider").copy().withStyle(TooltipBuilder.HINT))
+                    .build();
+            return JournalRichTooltip.attach(hit.withTextTooltip(built.plainLines(), luck.bounds()), built).within(this);
+        }
         return hit.within(this);
     }
 

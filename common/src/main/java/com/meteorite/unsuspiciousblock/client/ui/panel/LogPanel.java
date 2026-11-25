@@ -14,6 +14,8 @@ import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalFormatHelper;
 import com.meteorite.meteosuikit.api.text.TextScroll;
@@ -23,7 +25,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.meteosuikit.api.control.UiPaginationState;
 import com.meteorite.unsuspiciousblock.client.ui.widget.CopyCoordinateButton;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
-import net.minecraft.client.Minecraft;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -33,9 +35,11 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -45,6 +49,7 @@ import java.util.function.Consumer;
  */
 public final class LogPanel implements PagePanel, UiInputContainer {
     private final UiControlGroup controls = new UiControlGroup();
+    private final Map<UiControl, JournalTooltipSpec> controlRichTooltips = new IdentityHashMap<>();
     private boolean controlsDirty = true;
     private Consumer<ExcavationLogEntry> onOpenEntry = entry -> {
     };
@@ -60,7 +65,16 @@ public final class LogPanel implements PagePanel, UiInputContainer {
 
     @Override
     public UiPointerHit hitTest(double x, double y) {
-        return UiInputContainer.super.hitTest(x, y);
+        UiPointerHit hit = UiInputContainer.super.hitTest(x, y);
+        if (hit == null) {
+            return null;
+        }
+        for (var entry : controlRichTooltips.entrySet()) {
+            if (hit.owns(entry.getKey())) {
+                return JournalRichTooltip.attach(hit, entry.getValue());
+            }
+        }
+        return hit;
     }
 
     public void renderControls(GuiGraphics graphics, Font font, UiPointer pointer) {
@@ -71,11 +85,11 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     public void prepareUi() {
         if (!controlsDirty) return;
         controlsDirty = false;
+        controlRichTooltips.clear();
         controls.beginUpdate();
         int bgX = layout.rightPageX() + 4;
         int y = layout.rightPageY() + JournalLayout.LOG_LIST_TOP;
         IntRange visible = computeVisibleRows(pagination.getPage());
-        Font font = Minecraft.getInstance().font;
         for (int index = visible.start(); index < visible.end(); index++) {
             DisplayRow row = displayRows.get(index);
             if (row instanceof GroupHeaderRow(String groupName, List<LogEntryState> entries)) {
@@ -89,26 +103,43 @@ public final class LogPanel implements PagePanel, UiInputContainer {
                 UiControl entry = controls.obtain(state.entry.entryId());
                 entry.setLayoutKey("log/" + state.entry.entryId());
                 entry.setBounds(bgX, y, JournalLayout.LOG_ENTRY_TEXTURE_WIDTH, row.height());
-                JournalControls.configureHotspot(entry, Component.literal(entryTimeText(state)), noteTooltip(state.entry),
+                JournalTooltipSpec entrySpec = noteTooltipSpec(state.entry);
+                JournalControls.configureHotspot(entry, Component.literal(entryTimeText(state)),
+                        entrySpec == null ? List.of() : entrySpec.plainLines(),
                         () -> {
                             if (batchSelectionMode) toggleEntrySelection(state.entry.entryId());
                             else onOpenEntry.accept(state.entry);
                         });
+                if (entrySpec != null) {
+                    controlRichTooltips.put(entry, entrySpec);
+                }
                 if (!batchSelectionMode) {
                     UiControl copy = controls.obtain("copy:" + state.entry.entryId());
                     copy.setBounds(bgX + JournalLayout.LOG_ENTRY_TEXTURE_WIDTH - CopyCoordinateButton.WIDTH
                                     - JournalLayout.LOG_ENTRY_COPY_BTN_RIGHT_PAD, y + JournalLayout.LOG_ENTRY_COPY_BTN_TOP_OFFSET,
                             CopyCoordinateButton.WIDTH, CopyCoordinateButton.HEIGHT);
                     CopyCoordinateButton.configure(copy, state.entry);
+                    controlRichTooltips.put(copy, JournalTooltipSpec.builder()
+                            .header(UiAtlas.icon(UiAtlas.Icon.COPY),
+                                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_copy_teleport_tooltip"),
+                                    TooltipBuilder.TITLE, null)
+                            .line(Component.literal(entryDimensionPosText(state)).withStyle(TooltipBuilder.LABEL))
+                            .build());
                     if (state.entry.hasNote()) {
                         UiRect hitBounds = noteBadge(bgX, y).hitBounds();
                         UiControl note = controls.obtain("note:" + state.entry.entryId());
                         note.setBounds(hitBounds.x(), hitBounds.y(), hitBounds.width(), hitBounds.height());
                         Component label = Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_edit_from_list_tooltip");
-                        JournalControls.configureHotspot(note, label, List.of(label),
+                        JournalTooltipSpec noteEditSpec = JournalTooltipSpec.builder()
+                                .header(UiAtlas.icon(UiAtlas.Icon.PENCIL), label, TooltipBuilder.TITLE, null)
+                                .footer(null, Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.click_action"),
+                                        TooltipBuilder.ACCENT, label)
+                                .build();
+                        JournalControls.configureHotspot(note, label, noteEditSpec.plainLines(),
                                 () -> {
                                     if (noteClickHandler != null) noteClickHandler.accept(state.entry);
                                 });
+                        controlRichTooltips.put(note, noteEditSpec);
                     }
                 }
             }
@@ -117,12 +148,18 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         controls.endUpdate();
     }
 
-    private static List<Component> noteTooltip(ExcavationLogEntry entry) {
-        if (!entry.hasNote()) return List.of();
-        List<Component> lines = new ArrayList<>();
-        lines.add(Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_tooltip_title"));
-        for (String line : entry.note().split("\n", -1)) lines.add(Component.literal(line.isEmpty() ? " " : line));
-        return lines;
+    private static @Nullable JournalTooltipSpec noteTooltipSpec(ExcavationLogEntry entry) {
+        if (!entry.hasNote()) {
+            return null;
+        }
+        JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder()
+                .header(UiAtlas.icon(UiAtlas.Icon.PENCIL),
+                        Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_note_tooltip_title"),
+                        TooltipBuilder.TITLE, null);
+        for (String line : entry.note().split("\n", -1)) {
+            spec.line(Component.literal(line.isEmpty() ? " " : line).withStyle(TooltipBuilder.BODY));
+        }
+        return spec.build();
     }
 
     private static final ResourceLocation ENTRY_TEXTURE =

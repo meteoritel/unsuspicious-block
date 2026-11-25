@@ -8,10 +8,13 @@ import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * 日志工具栏管理器。
@@ -20,6 +23,7 @@ import java.util.List;
  * 与 {@link CatalogToolbar} 遵循相同的设计模式。
  */
 public class LogToolbar {
+    private static final String KEY_PREFIX = "screen.unsuspiciousblock.archaeology_journal.";
 
     // 状态
     private boolean sortDescending = true;
@@ -132,7 +136,8 @@ public class LogToolbar {
                 sortDirectionIcon(this.sortDescending),
                 sortDirectionTooltip(this.sortDescending),
                 () -> toggleSortDirection(logPanel));
-        registerToolbarButton(screen, this.sortDirBtn);
+        registerToolbarButton(screen, this.sortDirBtn, () -> iconActionTooltip(
+                sortDirectionIcon(this.sortDescending), sortDirectionTooltip(this.sortDescending), "tooltip.toggle"));
 
         // 分组按钮
         int logGroupX = logToolbarRightX - JournalLayout.LOG_SORT_ICON_SIZE - JournalLayout.LOG_TOOLBAR_GAP
@@ -143,7 +148,8 @@ public class LogToolbar {
                 groupModeIcon(this.groupMode),
                 LogGrouper.groupModeTooltip(this.groupMode),
                 () -> cycleGroupMode(logPanel));
-        registerToolbarButton(screen, this.groupBtn);
+        registerToolbarButton(screen, this.groupBtn, () -> iconActionTooltip(
+                groupModeIcon(this.groupMode), LogGrouper.groupModeTooltip(this.groupMode), "tooltip.cycle"));
 
         // 清空操作与右侧视图设置排成一行。
         int clearAllX = logGroupX - JournalLayout.LOG_TOOLBAR_GAP - JournalLayout.LOG_GROUP_ICON_SIZE;
@@ -154,7 +160,9 @@ public class LogToolbar {
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.all_tooltip"),
                 onClearAll);
-        registerToolbarButton(screen, clearAllBtn);
+        registerToolbarButton(screen, clearAllBtn, () -> iconTooltip(
+                UiAtlas.Icon.TRASH_FULL,
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.all_tooltip")));
 
         int clearTableX = clearAllX - JournalLayout.LOG_TOOLBAR_GAP - JournalLayout.LOG_GROUP_ICON_SIZE;
         UiControl clearTableBtn = JournalControls.iconButton(
@@ -165,7 +173,9 @@ public class LogToolbar {
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.table_tooltip"),
                 onClearTable);
         clearTableBtn.setLayoutKey("journal/log-clear-table");
-        registerToolbarButton(screen, clearTableBtn);
+        registerToolbarButton(screen, clearTableBtn, () -> iconTooltip(
+                UiAtlas.Icon.TRASH_EMPTY,
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.table_tooltip")));
 
         // 保留配置、批量选择、执行三个固定槽位，批量模式切换时布局不会跳动。
         int executeBatchX = logToolbarLeftX
@@ -177,7 +187,9 @@ public class LogToolbar {
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.execute_batch_tooltip"),
                 onExecuteBatch);
-        registerToolbarButton(screen, this.executeBatchBtn);
+        registerToolbarButton(screen, this.executeBatchBtn, () -> iconTooltip(
+                UiAtlas.Icon.CHECK,
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.execute_batch_tooltip")));
 
         int batchSelectX = logToolbarLeftX + JournalLayout.LOG_GROUP_ICON_SIZE
                 + JournalLayout.LOG_TOOLBAR_GAP;
@@ -188,7 +200,14 @@ public class LogToolbar {
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_tooltip"),
                 onToggleBatch);
-        registerToolbarButton(screen, this.batchSelectBtn);
+        registerToolbarButton(screen, this.batchSelectBtn, () -> {
+            boolean active = logPanel.isBatchSelectionMode();
+            return iconActionTooltip(
+                    active ? UiAtlas.Icon.GROUP : UiAtlas.Icon.SQUARE,
+                    Component.translatable(active
+                            ? "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_exit_tooltip"
+                            : "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_tooltip"), "tooltip.toggle");
+        });
 
         UiControl retentionBtn = JournalControls.iconButton(
                 logToolbarLeftX, logToolbarY,
@@ -197,14 +216,32 @@ public class LogToolbar {
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_retention.open_tooltip"),
                 onOpenRetention);
-        registerToolbarButton(screen, retentionBtn);
+        registerToolbarButton(screen, retentionBtn, () -> iconActionTooltip(
+                UiAtlas.Icon.GEAR,
+                Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_retention.open_tooltip"),
+                "tooltip.open_settings"));
+    }
+
+    private static JournalTooltipSpec iconTooltip(UiAtlas.Icon icon, Component title) {
+        return JournalTooltipSpec.builder()
+                .header(UiAtlas.icon(icon), title, TooltipBuilder.NEGATIVE, null)
+                .build();
+    }
+
+    private static JournalTooltipSpec iconActionTooltip(UiAtlas.Icon icon, Component title, String actionSuffix) {
+        return JournalTooltipSpec.builder()
+                .header(UiAtlas.icon(icon), title, TooltipBuilder.TITLE, null)
+                .footer(null, Component.translatable(KEY_PREFIX + "tooltip.click_action"),
+                        TooltipBuilder.ACCENT, Component.translatable(KEY_PREFIX + actionSuffix))
+                .build();
     }
 
     // 所有日志工具栏按钮均从隐藏状态注册，只允许 syncVisibility 决定是否显示。
-    private void registerToolbarButton(ArchaeologyJournalScreen screen, UiControl button) {
+    private void registerToolbarButton(ArchaeologyJournalScreen screen, UiControl button,
+                                       Supplier<JournalTooltipSpec> tooltip) {
         button.setVisible(false);
         this.toolbarButtons.add(button);
-        screen.registerWidget(button);
+        screen.registerWidget(button, tooltip);
     }
 
     /**

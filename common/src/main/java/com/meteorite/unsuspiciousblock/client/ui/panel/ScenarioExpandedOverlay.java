@@ -2,11 +2,26 @@ package com.meteorite.unsuspiciousblock.client.ui.panel;
 
 import com.meteorite.meteosuikit.api.control.UiDocumentLightboxContent;
 import com.meteorite.meteosuikit.api.control.UiLightbox;
+import com.meteorite.meteosuikit.api.control.UiStatefulTarget;
+import com.meteorite.meteosuikit.api.geometry.UiRect;
+import com.meteorite.meteosuikit.api.input.UiFocusState;
+import com.meteorite.meteosuikit.api.input.UiInputContext;
+import com.meteorite.meteosuikit.api.input.UiInteractionSession;
+import com.meteorite.meteosuikit.api.input.UiPointer;
+import com.meteorite.meteosuikit.api.input.UiPointerHit;
+import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
+import com.meteorite.meteosuikit.api.layout.UiLayoutSource;
 import com.meteorite.meteosuikit.api.text.TextMeasurer;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 /**
  * 场景灯箱的业务文案与内容装配，阅读交互由 kit 持有。
@@ -65,15 +80,65 @@ final class ScenarioExpandedOverlay {
     private ScenarioExpandedOverlay() {
     }
 
-    static UiDocumentLightboxContent create(ScenarioDetailPanel owner, Font font) {
+    static UiLightbox.Content create(ScenarioDetailPanel owner, Font font) {
         var content = new UiDocumentLightboxContent(TextMeasurer.of(font), () -> UnsuspiciousUiTheme.PARCHMENT,
                 ScenarioSession.text("conditions.heading"));
         content.setContentSource(() -> ScenarioPageBuilder.copyForLightbox(owner.tree()));
         content.setBackground(ScenarioDetailPanel::renderConditionBackground);
-        return content;
+        return new RichLightboxContent(owner, content);
     }
 
     private static Component text(String key, Object... args) {
         return Component.translatable("screen.unsuspiciousblock.lightbox." + key, args);
+    }
+
+    /**
+     * 委托灯箱内容，在保留全部平移/缩放与焦点行为的前提下升级命中节点的富 Tooltip 呈现。
+     */
+    private record RichLightboxContent(ScenarioDetailPanel owner, UiDocumentLightboxContent delegate)
+            implements UiLightbox.Content, UiStatefulTarget, UiLayoutSource {
+
+        @Override
+        public @Nullable UiPointerHit hitTest(double x, double y) {
+            UiPointerHit hit = delegate.hitTest(x, y);
+            if (hit == null || hit.tooltip() == null) {
+                return hit;
+            }
+            JournalTooltipSpec spec = owner.richTooltip(hit.tooltip().tooltip());
+            return spec != null ? JournalRichTooltip.attach(hit, spec) : hit;
+        }
+
+        @Override public int contentWidth() { return delegate.contentWidth(); }
+        @Override public int contentHeight() { return delegate.contentHeight(); }
+        @Override public void setViewport(UiRect viewport) { delegate.setViewport(viewport); }
+        @Override public void render(GuiGraphics graphics, Font font, UiPointer pointer) { delegate.render(graphics, font, pointer); }
+        @Override public boolean zoom(double amount, double anchorX, double anchorY) { return delegate.zoom(amount, anchorX, anchorY); }
+        @Override public boolean zoomBy(int direction) { return delegate.zoomBy(direction); }
+        @Override public void fit() { delegate.fit(); }
+        @Override public void setPanLocked(boolean panLocked) { delegate.setPanLocked(panLocked); }
+        @Override public boolean panBy(double screenDx, double screenDy) { return delegate.panBy(screenDx, screenDy); }
+        @Override public boolean mousePressed(UiInputContext context) { return delegate.mousePressed(context); }
+        @Override public boolean mouseReleased(UiInputContext context) { return delegate.mouseReleased(context); }
+        @Override public boolean mouseDragged(UiInputContext context, double dx, double dy) { return delegate.mouseDragged(context, dx, dy); }
+        @Override public boolean mouseScrolled(UiInputContext context, double x, double y) { return delegate.mouseScrolled(context, x, y); }
+        @Override public boolean keyPressed(int key, int scan, int modifiers) { return delegate.keyPressed(key, scan, modifiers); }
+        @Override public boolean keyReleased(int key, int scan, int modifiers) { return delegate.keyReleased(key, scan, modifiers); }
+        @Override public boolean charTyped(char codePoint, int modifiers) { return delegate.charTyped(codePoint, modifiers); }
+        @Override public void interactionEnded(UiInteractionSession.EndReason reason) { delegate.interactionEnded(reason); }
+        @Override public void scopeExited(UiInteractionSession.EndReason reason) { delegate.scopeExited(reason); }
+        @Override public int zoomPercent() { return delegate.zoomPercent(); }
+        @Override public @Nullable Component placeholder() { return delegate.placeholder(); }
+        @Override public void invalidateResources() { delegate.invalidateResources(); }
+        @Override public UiFocusState focusState() { return delegate.focusState(); }
+        @Override public Component accessibleName() { return delegate.accessibleName(); }
+        @Override public boolean activate() { return delegate.activate(); }
+        @Override public UiRect bounds() { return delegate.bounds(); }
+        @Override public boolean isEnabled() { return delegate.isEnabled(); }
+        @Override public boolean isVisible() { return delegate.isVisible(); }
+        @Override public UiStatefulTarget setEnabled(boolean value) { delegate.setEnabled(value); return this; }
+        @Override public UiStatefulTarget setVisible(boolean value) { delegate.setVisible(value); return this; }
+        @Override public void setBounds(int x, int y, int width, int height) { delegate.setBounds(x, y, width, height); }
+        @Override public void setLayoutKey(String key) { delegate.setLayoutKey(key); }
+        @Override public List<UiLayoutNode> layoutNodes() { return delegate.layoutNodes(); }
     }
 }

@@ -23,6 +23,8 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ConditionOption;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
@@ -62,6 +64,9 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
     private final UiControl probe;
     private final UiControl paramsButton;
     private final UiControl clear;
+    private final UiControl calculateButton;
+    private final UiControl applyOnlyButton;
+    private final UiControl cancelButton;
     private final UiWidgetRow confirmationRow = new UiWidgetRow(4, UiWidgetRow.Alignment.START);
     private final UiLayer layer;
     private UiRect bounds = new UiRect(0, 0, 1, 1);
@@ -100,12 +105,13 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         paramsButton = button(font, ScenarioSession.text("params.short"), UiAtlas.Icon.PARAMS, () ->
                 owner.open(new ScenarioParamsOverlay(owner, options, baseDraft.withInput(new SimulationInput(List.copyOf(draftConditions), params)))));
         clear = button(font, ScenarioSession.text("conditions.clear"), null, draftConditions::clear);
-        UiControl calculate = button(font, ScenarioSession.text("params.apply_calculate"), null,
+        calculateButton = button(font, ScenarioSession.text("params.apply_calculate"), null,
                 () -> submitDraft(session::applyDraftAndSimulate));
-        calculate.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
-        List<UiControl> confirmationActions = List.of(calculate,
-                button(font, ScenarioSession.text("params.apply_only"), null, () -> submitDraft(session::applyDraft)),
-                button(font, Component.translatable("gui.cancel"), null, owner::close));
+        calculateButton.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
+        applyOnlyButton = button(font, ScenarioSession.text("params.apply_only"), null,
+                () -> submitDraft(session::applyDraft));
+        cancelButton = button(font, Component.translatable("gui.cancel"), null, owner::close);
+        List<UiControl> confirmationActions = List.of(calculateButton, applyOnlyButton, cancelButton);
         for (UiControl action : confirmationActions) {
             actions.remove(action);
             confirmationRow.add(action, UiLinearLayout.Child.remain());
@@ -184,9 +190,41 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         int index = hit.rowIndex(list);
         if (index >= 0 && index < options.conditions().size()) {
             ConditionOption option = options.conditions().get(index);
-            hit = hit.withTextTooltip(
-                    ScenarioLabel.conditionTooltip(option.condition(), draftConditions.contains(option.id())),
-                    list.bounds());
+            JournalTooltipSpec spec = ScenarioLabel.conditionTooltipRich(
+                    option.condition(), draftConditions.contains(option.id()));
+            hit = JournalRichTooltip.attach(hit.withTextTooltip(spec.plainLines(), list.bounds()), spec);
+        } else if (hit.owns(probe)) {
+            hit = JournalRichTooltip.attach(hit, JournalTooltipSpec.builder()
+                    .header(UiAtlas.SYNC_PLAYER, ScenarioSession.text("probe.button"), TooltipBuilder.TITLE, null)
+                    .line(ScenarioSession.text("probe.hint").copy().withStyle(TooltipBuilder.LABEL))
+                    .build());
+        } else if (hit.owns(paramsButton)) {
+            hit = JournalRichTooltip.attach(hit, JournalTooltipSpec.builder()
+                    .header(UiAtlas.icon(UiAtlas.Icon.PARAMS), ScenarioSession.text("params.title"),
+                            TooltipBuilder.TITLE, null)
+                    .line(ScenarioSession.text("params.tooltip_open").copy().withStyle(TooltipBuilder.LABEL))
+                    .build());
+        } else if (hit.owns(clear)) {
+            hit = JournalRichTooltip.attach(hit, JournalTooltipSpec.builder()
+                    .header(UiAtlas.icon(UiAtlas.Icon.CLOSE), ScenarioSession.text("conditions.clear"),
+                            TooltipBuilder.BODY, null)
+                    .line(ScenarioSession.text("conditions.clear_hint").copy().withStyle(TooltipBuilder.LABEL))
+                    .build());
+        } else if (hit.owns(calculateButton)) {
+            hit = JournalRichTooltip.attach(hit, JournalTooltipSpec.builder()
+                    .header(UiAtlas.icon(UiAtlas.Icon.CALCULATE), ScenarioSession.text("params.apply_calculate"),
+                            TooltipBuilder.TITLE, null)
+                    .line(ScenarioSession.text("params.apply_calculate_hint").copy().withStyle(TooltipBuilder.LABEL))
+                    .build());
+        } else if (hit.owns(applyOnlyButton)) {
+            hit = JournalRichTooltip.attach(hit, JournalTooltipSpec.builder()
+                    .header(ScenarioSession.text("params.apply_only"), TooltipBuilder.BODY)
+                    .line(ScenarioSession.text("params.confirm_help").copy().withStyle(TooltipBuilder.LABEL))
+                    .build());
+        } else if (hit.owns(cancelButton)) {
+            hit = JournalRichTooltip.attach(hit, JournalTooltipSpec.builder()
+                    .header(Component.translatable("gui.cancel"), TooltipBuilder.LABEL)
+                    .build());
         }
         return hit.within(this);
     }

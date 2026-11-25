@@ -9,6 +9,7 @@ import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionIdentity;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionPresentation;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
@@ -20,6 +21,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.catalog.ScenarioBranch;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ConditionOption;
+import com.meteorite.unsuspiciousblock.core.loottable.simulation.ProbabilityFormat;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioConditionEvaluator;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioConditionEvaluator.BranchStatus;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
@@ -34,23 +36,31 @@ import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
- * 场景详情文档构建器：将原子环境条件勾选区与按可获得性分层的分支状态组装为紧凑排版节点。
+ * 场景详情文档构建器：将原子环境条件勾选区与按可获得性分层的分支状态组装为紧凑排版节点，
+ * 同时产出节点关联的富文本视觉 Tooltip 规格表。
  * 严格遵守未发现物品防剧透约定：未解锁目标只渲染占位图标且不暴露名称与跳转。
  */
 final class ScenarioPageBuilder {
     private static final int INDENT_STEP = 6;
     private static final int ITEM_INDENT = 8;
     private static final int ICONS_PER_ROW = 6;
+    private static final String KEY_PREFIX = "screen.unsuspiciousblock.archaeology_journal.";
+
+    /**
+     * 场景文档构建结果：逻辑节点列表与按纯文本提示行索引的富 Tooltip 查找表。
+     */
+    record BuiltConditions(List<UiNode> nodes, Map<List<Component>, JournalTooltipSpec> richTooltips) {
+    }
 
     enum Heading {
         SECTION_NEUTRAL,
@@ -100,12 +110,13 @@ final class ScenarioPageBuilder {
     private ScenarioPageBuilder() {
     }
 
-    static List<UiNode> buildConditions(ScenarioTableSnapshot snapshot,
-                                        SimulationOptions options,
-                                        Runnable dismissNotes,
-                                        Runnable clearConditions,
-                                        Consumer<String> toggleCondition,
-                                        BiConsumer<String, String> locate) {
+    static BuiltConditions buildConditionsWithTooltips(ScenarioTableSnapshot snapshot,
+                                                       SimulationOptions options,
+                                                       Runnable dismissNotes,
+                                                       Runnable clearConditions,
+                                                       Consumer<String> toggleCondition,
+                                                       BiConsumer<String, String> locate) {
+        Map<List<Component>, JournalTooltipSpec> tooltips = new HashMap<>();
         CatalogTableDto structure = snapshot.structure();
         List<String> enabledConditions = snapshot.choice().conditions();
         ScenarioParams params = snapshot.choice().params();
@@ -114,12 +125,15 @@ final class ScenarioPageBuilder {
         List<UiNode> content = new ArrayList<>();
 
         if (!notes.isEmpty()) {
+            List<Component> dismissTip = registerTooltip(tooltips, JournalTooltipSpec.builder()
+                    .header(UiAtlas.icon(UiAtlas.Icon.CLOSE), text("notes.dismiss"), TooltipBuilder.BODY, null)
+                    .footer(null, clickAction(), TooltipBuilder.ACCENT, text("notes.dismiss_hint"))
+                    .build());
             content.add(new UiNode.Row(4, UiNode.NO_PARENT,
-                    new UiNode.InlineIcon(UiAtlas.icon(UiAtlas.Icon.CLOSE),
-                            List.of(text("notes.dismiss").withStyle(TooltipBuilder.BODY)), null, dismissNotes::run),
+                    new UiNode.InlineIcon(UiAtlas.icon(UiAtlas.Icon.CLOSE), dismissTip, null, dismissNotes::run),
                     text("notes.header").withStyle(ChatFormatting.BOLD),
                     UiTextScheme.PARCHMENT.accent(), List.of(),
-                    List.of(text("notes.dismiss").withStyle(TooltipBuilder.BODY)), null, dismissNotes::run));
+                    dismissTip, null, dismissNotes::run));
             for (Component note : notes) {
                 content.add(new UiNode.Row(10, UiNode.NO_PARENT, note, UiTextScheme.PARCHMENT.body(),
                         List.of(), List.of(), null, null));
@@ -134,9 +148,16 @@ final class ScenarioPageBuilder {
             List<UiNode.InlineIcon> headerIcons = enabledSet.isEmpty()
                     ? List.of()
                     : List.of(new UiNode.InlineIcon(UiAtlas.icon(UiAtlas.Icon.CLOSE),
-                    List.of(text("conditions.clear").withStyle(TooltipBuilder.BODY)), null, clearConditions::run));
-            content.add(sectionHeading(Heading.SECTION_NEUTRAL, toggleHeading, headerIcons,
-                    List.of(text("conditions.toggles_hint").withStyle(TooltipBuilder.LABEL))));
+                    registerTooltip(tooltips, JournalTooltipSpec.builder()
+                            .header(UiAtlas.icon(UiAtlas.Icon.CLOSE), text("conditions.clear"), TooltipBuilder.BODY, null)
+                            .footer(null, clickAction(), TooltipBuilder.ACCENT, text("conditions.clear_hint"))
+                            .build()),
+                    null, clearConditions::run));
+            List<Component> togglesTip = registerTooltip(tooltips, JournalTooltipSpec.builder()
+                    .header(UiAtlas.icon(UiAtlas.Icon.PARAMS), toggleHeading, TooltipBuilder.TITLE, null)
+                    .line(text("conditions.toggles_hint").copy().withStyle(TooltipBuilder.LABEL))
+                    .build());
+            content.add(sectionHeading(Heading.SECTION_NEUTRAL, toggleHeading, headerIcons, togglesTip));
             content.add(new UiNode.Gap(2));
             for (ConditionOption option : options.conditions()) {
                 boolean checked = enabledSet.contains(option.id());
@@ -144,7 +165,8 @@ final class ScenarioPageBuilder {
                 int labelColor = checked ? JournalTextColors.COMPLETED : UiTextScheme.PARCHMENT.body();
                 Component label = ScenarioLabel.shortConditionLabel(option.condition()).copy()
                         .withStyle(style -> style.withColor(labelColor));
-                List<Component> tooltip = ScenarioLabel.conditionTooltip(option.condition(), checked);
+                List<Component> tooltip = registerTooltip(tooltips,
+                        ScenarioLabel.conditionTooltipRich(option.condition(), checked));
                 UiAction action = () -> toggleCondition.accept(option.id());
                 content.add(new UiNode.Row(6, UiNode.NO_PARENT,
                         new UiNode.InlineIcon(box, tooltip, option.id(), action),
@@ -171,7 +193,7 @@ final class ScenarioPageBuilder {
                     new UiNode.InlineIcon(UiAtlas.icon(UiAtlas.Icon.ENABLED), List.of(), null, null),
                     text("conditions.all_unconditional"), JournalTextColors.COMPLETED,
                     List.of(), List.of(), null, null));
-            return List.copyOf(content);
+            return new BuiltConditions(List.copyOf(content), Map.copyOf(tooltips));
         }
 
         List<EvaluatedGroup> available = new ArrayList<>();
@@ -192,25 +214,38 @@ final class ScenarioPageBuilder {
             }
         }
 
-        appendBucket(content, snapshot, enabledSet, params,
+        appendBucket(content, tooltips, snapshot, enabledSet, params,
                 Heading.SECTION_AVAILABLE,
                 text("branches.available", available.size()),
-                List.of(text("branches.available_hint").withStyle(TooltipBuilder.LABEL)),
+                registerTooltip(tooltips, JournalTooltipSpec.builder()
+                        .header(UiAtlas.icon(UiAtlas.Icon.ENABLED), text("branches.available", available.size()),
+                                TooltipBuilder.POSITIVE, null)
+                        .line(text("branches.available_hint").copy().withStyle(TooltipBuilder.LABEL))
+                        .build()),
                 available, toggleCondition, locate);
-        appendBucket(content, snapshot, enabledSet, params,
+        appendBucket(content, tooltips, snapshot, enabledSet, params,
                 Heading.SECTION_BLOCKED,
                 text("branches.blocked", blocked.size()),
-                List.of(text("branches.blocked_hint").withStyle(TooltipBuilder.LABEL)),
+                registerTooltip(tooltips, JournalTooltipSpec.builder()
+                        .header(UiAtlas.STATUS_BLOCKED, text("branches.blocked", blocked.size()),
+                                TooltipBuilder.NEGATIVE, null)
+                        .line(text("branches.blocked_hint").copy().withStyle(TooltipBuilder.LABEL))
+                        .build()),
                 blocked, toggleCondition, locate);
-        appendBucket(content, snapshot, enabledSet, params,
+        appendBucket(content, tooltips, snapshot, enabledSet, params,
                 Heading.SECTION_UNCERTAIN,
                 text("branches.uncertain", uncertain.size()),
-                List.of(text("branches.uncertain_hint").withStyle(TooltipBuilder.LABEL)),
+                registerTooltip(tooltips, JournalTooltipSpec.builder()
+                        .header(UiAtlas.icon(UiAtlas.Icon.HELP), text("branches.uncertain", uncertain.size()),
+                                TooltipBuilder.LABEL, null)
+                        .line(text("branches.uncertain_hint").copy().withStyle(TooltipBuilder.LABEL))
+                        .build()),
                 uncertain, toggleCondition, locate);
-        return List.copyOf(content);
+        return new BuiltConditions(List.copyOf(content), Map.copyOf(tooltips));
     }
 
     private static void appendBucket(List<UiNode> content,
+                                     Map<List<Component>, JournalTooltipSpec> tooltips,
                                      ScenarioTableSnapshot snapshot,
                                      Set<String> enabledSet,
                                      ScenarioParams params,
@@ -228,11 +263,12 @@ final class ScenarioPageBuilder {
         }
         content.add(sectionHeading(headingKind, title, List.of(), tooltip));
         for (EvaluatedGroup evaluated : bucket) {
-            addBranch(content, snapshot, enabledSet, params, evaluated, toggleCondition, locate);
+            addBranch(content, tooltips, snapshot, enabledSet, params, evaluated, toggleCondition, locate);
         }
     }
 
     private static void addBranch(List<UiNode> nodes,
+                                  Map<List<Component>, JournalTooltipSpec> tooltips,
                                   ScenarioTableSnapshot snapshot,
                                   Set<String> enabledSet,
                                   ScenarioParams params,
@@ -249,26 +285,28 @@ final class ScenarioPageBuilder {
 
         int constraints = constraintCount(group);
         if (isSingleCollapsibleBranch(group, constraints)) {
-            addCollapsedBranchHeader(nodes, group, enabledSet, params, toggleCondition);
+            addCollapsedBranchHeader(nodes, tooltips, group, enabledSet, params, toggleCondition);
         } else {
             Component badgeText = text(appearance.labelKey);
             MutableComponent title = summarizeGroup(group, evaluated.ordinal(), constraints)
                     .withStyle(ChatFormatting.BOLD);
-            // 仅「可触发」在同属可获得分组下补充随机提示，其余状态已由分组胶囊表达
             if (appearance == BranchAppearance.TRIGGERABLE) {
                 title.append(Component.literal(" · ").withStyle(style -> style.withColor(UiTextScheme.PARCHMENT.hint())))
                         .append(badgeText.copy().withStyle(style -> style.withBold(false).withColor(appearance.color)));
             }
 
-            List<Component> branchTooltip = new ArrayList<>();
-            branchTooltip.add(badgeText.copy().withStyle(appearance.tooltipStyle));
+            JournalTooltipSpec.Builder branchSpec = JournalTooltipSpec.builder();
+            branchSpec.header(UiAtlas.icon(appearance.icon),
+                    Component.literal(title.getString()), appearance.tooltipStyle,
+                    new JournalTooltipSpec.Pill(badgeText, appearance.tooltipStyle));
             if (!group.source().isEmpty() && !group.source().equals("observed")) {
-                branchTooltip.add(text("injection.known", group.source()).withStyle(TooltipBuilder.BODY));
+                branchSpec.line(text("injection.known", group.source()).copy().withStyle(TooltipBuilder.ACCENT));
             }
             if (group.uncertain()) {
-                branchTooltip.add(text(group.source().equals("observed")
-                        ? "injection.observed_hint" : "conditions.hypothetical").withStyle(TooltipBuilder.LABEL));
+                branchSpec.line(text(group.source().equals("observed")
+                        ? "injection.observed_hint" : "conditions.hypothetical").copy().withStyle(TooltipBuilder.LABEL));
             }
+            List<Component> branchTooltip = registerTooltip(tooltips, branchSpec.build());
 
             nodes.add(new UiNode.Row(4, UiNode.NO_PARENT,
                     new UiNode.InlineIcon(UiAtlas.icon(appearance.icon), branchTooltip, status, null),
@@ -276,12 +314,12 @@ final class ScenarioPageBuilder {
                     Heading.ENTRY, null));
 
             for (LootConditionInfo condition : group.conditions()) {
-                addScenarioCondition(nodes, condition, enabledSet, params, ITEM_INDENT, parent, null, toggleCondition);
+                addScenarioCondition(nodes, tooltips, condition, enabledSet, params, ITEM_INDENT, parent, null, toggleCondition);
             }
             for (LootConditionInfo extra : group.extras()) {
-                addExtraCondition(nodes, extra, params, ITEM_INDENT, parent, null);
+                addExtraCondition(nodes, tooltips, extra, params, parent);
             }
-            addLuckRows(nodes, group.luck(), params, ITEM_INDENT, parent, null);
+            addLuckRows(nodes, tooltips, group.luck(), params, ITEM_INDENT, parent, null);
         }
 
         Set<String> seen = new HashSet<>();
@@ -292,7 +330,11 @@ final class ScenarioPageBuilder {
             }
             var target = snapshot.target(branch.kind(), branch.target());
             UiIcon icon = UiAtlas.UNKNOWN_ITEM;
-            List<Component> tooltip = List.of(text("conditions.undiscovered").withStyle(TooltipBuilder.LABEL));
+            List<Component> tooltip = registerTooltip(tooltips, JournalTooltipSpec.builder()
+                    .header(UiAtlas.UNKNOWN_ITEM, text("conditions.undiscovered"), TooltipBuilder.LABEL, null)
+                    .line(Component.translatable(KEY_PREFIX + "tooltip.undiscovered_hint")
+                            .withStyle(TooltipBuilder.HINT))
+                    .build());
             UiAction action = null;
             if (target.visible()) {
                 Component name;
@@ -311,9 +353,13 @@ final class ScenarioPageBuilder {
                     icon = new UiIcon.Item(new ItemStack(branch.kind().equals("table") ? Items.BOOK : Items.NAME_TAG));
                     name = target.name();
                 }
-                tooltip = List.of(
-                        text("conditions.target." + branch.kind(), name).withStyle(TooltipBuilder.BODY),
-                        text("conditions.locate").withStyle(TooltipBuilder.POSITIVE));
+                JournalTooltipSpec targetSpec = JournalTooltipSpec.builder()
+                        .header(icon, name, TooltipBuilder.BODY,
+                                new JournalTooltipSpec.Pill(text(appearance.labelKey), appearance.tooltipStyle))
+                        .line(text("conditions.target_kind." + branch.kind()).copy().withStyle(TooltipBuilder.LABEL))
+                        .footer(null, clickAction(), TooltipBuilder.ACCENT, text("conditions.locate"))
+                        .build();
+                tooltip = registerTooltip(tooltips, targetSpec);
                 action = () -> locate.accept(branch.kind(), branch.target());
             }
             icons.add(new UiNode.InlineIcon(icon, tooltip, branch, action));
@@ -327,9 +373,6 @@ final class ScenarioPageBuilder {
         }
     }
 
-    /**
-     * 单条件分支把条件本身作为父行，避免「分支标题 + 同名子条件」上下两行重复。
-     */
     private static boolean isSingleCollapsibleBranch(Group group, int constraints) {
         if (!group.source().isEmpty() || constraints != 1) {
             return false;
@@ -357,26 +400,29 @@ final class ScenarioPageBuilder {
     }
 
     private static void addCollapsedBranchHeader(List<UiNode> nodes,
+                                                 Map<List<Component>, JournalTooltipSpec> tooltips,
                                                  Group group,
                                                  Set<String> enabledSet,
                                                  ScenarioParams params,
                                                  Consumer<String> toggleCondition) {
         if (!group.conditions().isEmpty()) {
-            addScenarioCondition(nodes, group.conditions().getFirst(), enabledSet, params,
+            addScenarioCondition(nodes, tooltips, group.conditions().getFirst(), enabledSet, params,
                     4, UiNode.NO_PARENT, Heading.ENTRY, toggleCondition);
             return;
         }
         if (!group.extras().isEmpty()) {
             ConditionTree.Truth truth = ScenarioConditionEvaluator.evaluate(group.extras().getFirst(),
                     new SimulationInput(List.of(), params));
-            addGenericConditionNode(nodes, group.extras().getFirst(), truth,
+            addGenericConditionNode(nodes, tooltips, group.extras().getFirst(), truth,
                     4, UiNode.NO_PARENT, false, Heading.ENTRY);
             return;
         }
-        addLuckRows(nodes, group.luck(), params, 4, UiNode.NO_PARENT, Heading.ENTRY);
+        addLuckRows(nodes, tooltips, group.luck(), params, 4, UiNode.NO_PARENT, Heading.ENTRY);
     }
 
-    private static void addLuckRows(List<UiNode> nodes, LuckGate luck, ScenarioParams params,
+    private static void addLuckRows(List<UiNode> nodes,
+                                    Map<List<Component>, JournalTooltipSpec> tooltips,
+                                    LuckGate luck, ScenarioParams params,
                                     int indent, int parent, @Nullable Object payload) {
         if (luck.isTrivial()) {
             return;
@@ -384,12 +430,10 @@ final class ScenarioPageBuilder {
         if (luck.minLuck().isPresent()) {
             double threshold = luck.minLuck().getAsDouble();
             boolean luckOk = params.luck() >= threshold;
-            String formatted = formatLuck(threshold);
+            String formatted = ProbabilityFormat.formatLuck(threshold);
             Component shortText = text("conditions.luck_gate_short", formatted);
-            List<Component> tooltip = List.of(
-                    text("conditions.luck_gate", formatted).withStyle(TooltipBuilder.BODY),
-                    text("params.luck_marker.player", formatLuck(params.luck()))
-                            .withStyle(luckOk ? TooltipBuilder.POSITIVE : TooltipBuilder.NEGATIVE));
+            List<Component> tooltip = registerTooltip(tooltips, luckThresholdTooltip(
+                    text("conditions.luck_gate", formatted), params.luck(), luckOk));
             nodes.add(new UiNode.Row(indent, parent,
                     new UiNode.InlineIcon(readOnlyTruthIcon(luckOk ? ConditionTree.Truth.TRUE : ConditionTree.Truth.FALSE),
                             tooltip, null, null),
@@ -397,7 +441,10 @@ final class ScenarioPageBuilder {
                     List.of(), tooltip, payload, null));
         }
         if (luck.rangeLimited()) {
-            List<Component> tooltip = List.of(text("conditions.luck_range").withStyle(TooltipBuilder.BODY));
+            List<Component> tooltip = registerTooltip(tooltips, JournalTooltipSpec.builder()
+                    .header(UiAtlas.LUCK_ICON, text("conditions.luck_range_short"), TooltipBuilder.TITLE, null)
+                    .line(text("conditions.luck_range").copy().withStyle(TooltipBuilder.LABEL))
+                    .build());
             nodes.add(new UiNode.Row(indent, parent,
                     new UiNode.InlineIcon(UiAtlas.icon(UiAtlas.Icon.HELP), tooltip, null, null),
                     text("conditions.luck_range_short"), UiTextScheme.PARCHMENT.label(),
@@ -406,18 +453,29 @@ final class ScenarioPageBuilder {
         if (luck.bonusRollsGate().isPresent()) {
             double threshold = luck.bonusRollsGate().getAsDouble();
             boolean bonusOk = params.luck() >= threshold;
-            String formatted = formatLuck(threshold);
+            String formatted = ProbabilityFormat.formatLuck(threshold);
             Component shortText = text("conditions.bonus_luck_short", formatted);
-            List<Component> tooltip = List.of(
-                    text("conditions.bonus_luck", formatted).withStyle(TooltipBuilder.BODY),
-                    text("params.luck_marker.player", formatLuck(params.luck()))
-                            .withStyle(bonusOk ? TooltipBuilder.POSITIVE : TooltipBuilder.NEGATIVE));
+            List<Component> tooltip = registerTooltip(tooltips, luckThresholdTooltip(
+                    text("conditions.bonus_luck", formatted), params.luck(), bonusOk));
             nodes.add(new UiNode.Row(indent, parent,
                     new UiNode.InlineIcon(readOnlyTruthIcon(bonusOk ? ConditionTree.Truth.TRUE : ConditionTree.Truth.FALSE),
                             tooltip, null, null),
                     shortText, bonusOk ? JournalTextColors.COMPLETED : JournalTextColors.SEVERE,
                     List.of(), tooltip, payload, null));
         }
+    }
+
+    private static JournalTooltipSpec luckThresholdTooltip(Component requirement, float currentLuck, boolean met) {
+        return JournalTooltipSpec.builder()
+                .header(UiAtlas.LUCK_ICON, requirement, TooltipBuilder.BODY,
+                        new JournalTooltipSpec.Pill(
+                                text(met ? "branch.met" : "branch.unmet"),
+                                met ? TooltipBuilder.POSITIVE : TooltipBuilder.NEGATIVE))
+                .metrics(List.of(new JournalTooltipSpec.MetricChip(
+                        UiAtlas.LUCK_ICON,
+                        text("conditions.current_luck", ProbabilityFormat.formatLuck(currentLuck)),
+                        met ? TooltipBuilder.POSITIVE : TooltipBuilder.NEGATIVE, true)))
+                .build();
     }
 
     private static MutableComponent summarizeGroup(Group group, int ordinal, int constraintCount) {
@@ -439,11 +497,8 @@ final class ScenarioPageBuilder {
         return text("conditions.branch", ordinal);
     }
 
-    private static String formatLuck(double luck) {
-        return String.format(Locale.ROOT, "%.2f", luck);
-    }
-
     private static void addScenarioCondition(List<UiNode> nodes,
+                                             Map<List<Component>, JournalTooltipSpec> tooltips,
                                              LootConditionInfo condition,
                                              Set<String> enabledSet,
                                              ScenarioParams params,
@@ -451,14 +506,14 @@ final class ScenarioPageBuilder {
                                              int parent,
                                              @Nullable Object payload,
                                              Consumer<String> toggleCondition) {
-        // 仅可切换的环境开关使用复选框，与下方的只读条件和门槛明确区分
         if (ConditionTree.kind(condition) == ConditionTree.Kind.LEAF
                 && SimulationScenarioPlanner.isScenarioControlled(condition.conditionType())
                 && ConditionIdentity.isStable(condition)) {
             String key = condition.identity().key();
             boolean met = enabledSet.contains(key);
             Component styled = ScenarioLabel.shortConditionLabel(condition);
-            List<Component> tooltip = ScenarioLabel.conditionTooltip(condition, met);
+            List<Component> tooltip = registerTooltip(tooltips,
+                    ScenarioLabel.conditionTooltipRich(condition, met));
             UiAction action = () -> toggleCondition.accept(key);
             nodes.add(new UiNode.Row(indent, parent,
                     new UiNode.InlineIcon(UiAtlas.icon(met ? UiAtlas.Icon.CHECKBOX_CHECKED : UiAtlas.Icon.CHECKBOX_UNCHECKED),
@@ -468,22 +523,23 @@ final class ScenarioPageBuilder {
                     List.of(), tooltip, payload != null ? payload : key, action));
             return;
         }
-        ConditionTree.Truth truth = ScenarioConditionEvaluator.evaluate(condition, new SimulationInput(List.copyOf(enabledSet), params));
-        addGenericConditionNode(nodes, condition, truth, indent, parent, false, payload);
+        ConditionTree.Truth truth = ScenarioConditionEvaluator.evaluate(condition,
+                new SimulationInput(List.copyOf(enabledSet), params));
+        addGenericConditionNode(nodes, tooltips, condition, truth, indent, parent, false, payload);
     }
 
     private static void addExtraCondition(List<UiNode> nodes,
+                                          Map<List<Component>, JournalTooltipSpec> tooltips,
                                           LootConditionInfo condition,
                                           ScenarioParams params,
-                                          int indent,
-                                          int parent,
-                                          @Nullable Object payload) {
+                                          int parent) {
         ConditionTree.Truth truth = ScenarioConditionEvaluator.evaluate(condition,
                 new SimulationInput(List.of(), params));
-        addGenericConditionNode(nodes, condition, truth, indent, parent, true, payload);
+        addGenericConditionNode(nodes, tooltips, condition, truth, ITEM_INDENT, parent, true, null);
     }
 
     private static void addGenericConditionNode(List<UiNode> nodes,
+                                                Map<List<Component>, JournalTooltipSpec> tooltips,
                                                 ConditionPresentation condition,
                                                 ConditionTree.Truth truth,
                                                 int indent,
@@ -499,23 +555,41 @@ final class ScenarioPageBuilder {
                     .append(" · ");
         }
         styled.append(inner);
-        List<Component> tooltip = new ArrayList<>();
-        tooltip.add(condition.description().copy().withStyle(TooltipBuilder.BODY));
-        tooltip.add(Component.literal(condition.conditionType().toString()).withStyle(TooltipBuilder.HINT));
-        if (uncertain) {
-            tooltip.add(text("conditions." + condition.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY))
-                    .withStyle(TooltipBuilder.NEGATIVE));
+
+        ConditionTree.Truth effectiveTruth = uncertain ? ConditionTree.Truth.UNKNOWN : truth;
+        UiIcon statusIcon = readOnlyTruthIcon(effectiveTruth);
+        JournalTooltipSpec.Pill statusBadge = switch (effectiveTruth) {
+            case TRUE -> new JournalTooltipSpec.Pill(text("branch.met"), TooltipBuilder.POSITIVE);
+            case FALSE -> new JournalTooltipSpec.Pill(text("branch.unmet"), TooltipBuilder.NEGATIVE);
+            case UNKNOWN -> uncertain
+                    ? new JournalTooltipSpec.Pill(
+                    text("conditions." + condition.metadata().get(LootConditionHandlers.FIDELITY_METADATA_KEY)),
+                    TooltipBuilder.NEGATIVE)
+                    : new JournalTooltipSpec.Pill(text("branch.uncertain"), TooltipBuilder.LABEL);
+        };
+        Component titleText = ScenarioLabel.plainShortLabel(condition);
+        JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder()
+                .header(statusIcon, titleText, TooltipBuilder.BODY, statusBadge);
+        Component fullDesc = ScenarioLabel.displayDescription(condition);
+        if (!fullDesc.getString().equals(titleText.getString()) && !ProbabilityFormat.isGenericWrapper(condition)) {
+            spec.line(fullDesc.copy().withStyle(TooltipBuilder.LABEL));
         }
+        if (JournalTooltipSpec.showAdvancedIds()) {
+            spec.line(Component.literal(condition.conditionType().toString()).withStyle(TooltipBuilder.HINT));
+        }
+        List<Component> tooltip = registerTooltip(tooltips, spec.build());
+
         int color = truth == ConditionTree.Truth.FALSE
                 ? JournalTextColors.SEVERE
                 : truth == ConditionTree.Truth.TRUE && !secondary
                 ? JournalTextColors.COMPLETED
                 : secondary ? UiTextScheme.PARCHMENT.label() : UiTextScheme.PARCHMENT.body();
         nodes.add(new UiNode.Row(indent, parent,
-                new UiNode.InlineIcon(readOnlyTruthIcon(uncertain ? ConditionTree.Truth.UNKNOWN : truth),
-                        tooltip, null, null), styled, color, List.of(), tooltip, payload, null));
+                new UiNode.InlineIcon(statusIcon, tooltip, null, null), styled, color,
+                List.of(), tooltip, payload, null));
         for (ConditionPresentation child : condition.displayChildren()) {
-            addGenericConditionNode(nodes, child, ConditionTree.Truth.UNKNOWN, indent + INDENT_STEP, self, secondary, null);
+            addGenericConditionNode(nodes, tooltips, child, ConditionTree.Truth.UNKNOWN,
+                    indent + INDENT_STEP, self, secondary, null);
         }
     }
 
@@ -578,6 +652,17 @@ final class ScenarioPageBuilder {
         };
         return new UiNode.Row(4, UiNode.NO_PARENT, leading, value.copy().withStyle(ChatFormatting.BOLD),
                 color, icons, tooltip, kind, null);
+    }
+
+    private static List<Component> registerTooltip(Map<List<Component>, JournalTooltipSpec> registry,
+                                                   JournalTooltipSpec spec) {
+        List<Component> key = spec.plainLines();
+        registry.putIfAbsent(key, spec);
+        return key;
+    }
+
+    private static Component clickAction() {
+        return Component.translatable(KEY_PREFIX + "tooltip.click_action");
     }
 
     private static MutableComponent text(String key, Object... args) {

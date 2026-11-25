@@ -1,11 +1,14 @@
 package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionPresentation;
+import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandlers;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.UnknownReason;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -170,13 +173,50 @@ public final class ProbabilityFormat {
         return joinDescriptions(scenario.conditions());
     }
 
+    /**
+     * 剥离纯容器型父条件（如通用 location_check / weather_check），提取更具象的展示条件列表。
+     */
+    public static List<ConditionPresentation> flattenGenericWrappers(List<? extends ConditionPresentation> conditions) {
+        List<ConditionPresentation> flattened = new ArrayList<>();
+        appendVisibleConditions(conditions, flattened);
+        return List.copyOf(flattened);
+    }
+
+    private static void appendVisibleConditions(List<? extends ConditionPresentation> conditions,
+                                                List<ConditionPresentation> flattened) {
+        for (ConditionPresentation condition : conditions) {
+            if (isGenericWrapper(condition)) {
+                appendVisibleConditions(condition.displayChildren(), flattened);
+            } else {
+                flattened.add(condition);
+            }
+        }
+    }
+
+    /**
+     * 判断条件节点是否仅作通用容器且已有子条件可完整替代其语义。
+     */
+    public static boolean isGenericWrapper(ConditionPresentation condition) {
+        if (condition.displayChildren().isEmpty()) {
+            return false;
+        }
+        if (!(condition.description().getContents() instanceof TranslatableContents contents)) {
+            return false;
+        }
+        String key = contents.getKey();
+        return (LootConditionHandlers.I18N_PREFIX + "location_check").equals(key)
+                || (LootConditionHandlers.I18N_PREFIX + "weather_check").equals(key)
+                || (LootConditionHandlers.I18N_PREFIX + "entity_properties_fishing").equals(key);
+    }
+
     private static Component joinDescriptions(List<LootConditionInfo> conditions) {
+        List<ConditionPresentation> flattened = flattenGenericWrappers(conditions);
         var result = Component.empty();
-        for (int index = 0; index < conditions.size(); index++) {
+        for (int index = 0; index < flattened.size(); index++) {
             if (index > 0) {
                 result.append(Component.translatable(KEY_PREFIX + "item_hint.separator"));
             }
-            result.append(conditions.get(index).description().copy());
+            result.append(flattened.get(index).description().copy());
         }
         return result;
     }

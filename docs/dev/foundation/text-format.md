@@ -99,7 +99,8 @@ lang 值一律为纯文本，样式由代码 `withStyle` 控制。
 | [`core/block/SealedContentsDisplay`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/block/SealedContentsDisplay.java) | 封存信息行构建，物品 tooltip 与 Jade 共用 |
 | kit `style.UiTextScheme`、[`client/ui/theme/JournalTextColors`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/theme/JournalTextColors.java) | GUI 共同文字语义色与书页专属色（`NAME`、`SEVERE`、`SELECTED`、`COLLECTION`、`PROB_*`），见「GUI 内文本规范」 |
 | [`client/ui/theme/JournalPalette`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/theme/JournalPalette.java) | 羊皮纸书页边框、卡片底纹、遮罩与统一进度条（`drawProgressBar`），全部显式 8 位 ARGB |
-| [`client/ui/support/JournalTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/JournalTooltipBuilder.java) | 考古笔记 tooltip 行构建；条件树按「条件树映射」的颜色 + 字重双维度渲染 |
+| [`client/ui/support/JournalTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/support/JournalTooltipBuilder.java) | 考古笔记物品 / 子表 / 标签 Tooltip 规格构建；条件树按「条件树映射」的颜色 + 字重双维度渲染，并剥离冗余通用条件容器 |
+| [`client/ui/tooltip/JournalTooltipSpec`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/tooltip/JournalTooltipSpec.java)、[`JournalRichTooltip`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/tooltip/JournalRichTooltip.java) | 考古笔记富文本视觉 Tooltip 模型与无阴影呈现器（基于 kit `UiTooltipPanel` 与 `UiTooltipSkin` 绘制图标、状态胶囊、指标条与像素树连线） |
 | [`client/anvil/AnvilBreakdownTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/anvil/AnvilBreakdownTooltipBuilder.java)、[`client/grindstone/GrindstoneBreakdownTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/grindstone/GrindstoneBreakdownTooltipBuilder.java)、[`client/enchantment/EnchantmentRevealTooltipBuilder`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/enchantment/EnchantmentRevealTooltipBuilder.java) | 附魔台候选揭示与铁砧 / 砂轮分解预览（猫之瞳携带者可见），统一使用 `TooltipBuilder` 语义色常量 |
 
 ## 7. 扩展点：新增物品 tooltip 的标准流程
@@ -114,7 +115,7 @@ GUI 内文本提示的新增 / 修改流程见「GUI 内文本规范」的「新
 
 ## 8. GUI 内文本规范
 
-GUI 覆盖范围 = 屏幕内的 **hover tooltip**（按钮 / 条目 / 帮助等提示，一律走原版 `renderTooltip` 渲染，不自绘）与**自绘文本**（面板标题、状态行、提示、空状态文案等）。Toast 与 HUD 文本暂不在本节范围内，需要时再扩展。
+GUI 覆盖范围 = 屏幕内的 **hover tooltip**（按钮 / 条目 / 帮助等提示，一律走原版 `renderTooltip`、kit `withTextTooltip` 或基于 `UiTooltipPanel` + `UiTooltipSkin` 的 [`JournalRichTooltip`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/tooltip/JournalRichTooltip.java) 渲染）与**自绘文本**（面板标题、状态行、提示、空状态文案等）。Toast 与 HUD 文本暂不在本节范围内，需要时再扩展。
 
 ### 8.1 结构规则（弱化五段式）
 
@@ -143,7 +144,7 @@ GUI 覆盖范围 = 屏幕内的 **hover tooltip**（按钮 / 条目 / 帮助等�
 - **按语义取色**：无损失标注使用 `positive`，提示使用 `hint`，转换标注使用 `accent`；书签 Tab 选中态与悬停态随 `UiTextScheme.PARCHMENT`（`title` / `body`），不使用与羊皮纸反差过大的高饱和黄色；
 - **书页结构色与显式 ARGB**：羊皮纸边框、卡片底纹、分隔线、暖色遮罩及三处进度条（目录、介绍页、日志详情）统一由 [`JournalPalette`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/theme/JournalPalette.java) 维护并共用 `JournalPalette.drawProgressBar`；所有传给 `GuiGraphics.fill` 或文本渲染的整数色值统一写成显式 8 位 ARGB（`0xAARRGGBB`），防止漏写 `0xFF` Alpha 导致填充透明失效；
 - **暗底界面收拢到 `UiTextScheme.DARK`**：战利品管理等暗色界面统一取 `UiTextScheme.DARK` 语义槽位；
-- hover tooltip 一律走原版 `renderTooltip`（或 kit `withTextTooltip`），只允许使用 `TooltipBuilder` 亮色语义常量或白字，不夹带 `UiTextScheme.PARCHMENT` / 棕色字；
+- hover tooltip 一律走原版 `renderTooltip`、kit `withTextTooltip` 或基于 `UiTooltipPanel` 的 [`JournalRichTooltip`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/ui/tooltip/JournalRichTooltip.java) 渲染，只允许使用 `TooltipBuilder` 亮色语义常量或白字，不夹带 `UiTextScheme.PARCHMENT` / 棕色字；底层技术 ID（如条件注册名、子表或标签完整 ID）默认隐藏，仅在原版高级提示（`F3+H`）开启时展示；
 - lang 值一律纯文本、样式由代码控制（同「本地化键命名规则」的约束）。
 
 ### 8.4 新增 GUI 文本的标准流程

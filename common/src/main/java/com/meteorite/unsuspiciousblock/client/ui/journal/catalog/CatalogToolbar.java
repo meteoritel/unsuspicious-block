@@ -1,27 +1,27 @@
 package com.meteorite.unsuspiciousblock.client.ui.journal.catalog;
 
-import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
-import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
-import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.control.UiTextInput;
+import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
+import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
+import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
+import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
-
-import com.meteorite.unsuspiciousblock.client.ui.screen.ArchaeologyJournalScreen;
-
 /**
  * 目录查询、排序与 kit 控件装配；搜索草稿按防抖窗口提交。
  */
 public class CatalogToolbar {
+    private static final String KEY_PREFIX = "screen.unsuspiciousblock.archaeology_journal.";
+
     // 搜索输入防抖窗口：逐字符提交会重建整份目录投影，200ms 内连打只提交一次
     private static final long SEARCH_DEBOUNCE_MILLIS = 200L;
 
@@ -141,15 +141,6 @@ public class CatalogToolbar {
             return;
         }
         commitPendingSearch();
-    }
-
-    /**
-     * 立即提交未生效的搜索输入（resize 快照、退出子屏、其它目录动作前）
-     */
-    public void flushPendingSearch() {
-        if (this.pendingSearchText != null) {
-            commitPendingSearch();
-        }
     }
 
     // 提交草稿：先落定查询再重建，保证重建读到的就是同一份输入
@@ -307,28 +298,17 @@ public class CatalogToolbar {
                 + (bookLayout.leftPageWidth() - JournalLayout.CATALOG_TEXTURE_WIDTH) / 2
                 + JournalLayout.CATALOG_X_OFFSET + this.horizontalOffset;
 
-        // 搜索规则分成语法与用途两行，缩短 tooltip 宽度并区分信息层级。
         String tooltipBase = "screen.unsuspiciousblock.archaeology_journal.search_tooltip";
+        JournalTooltipSpec searchTooltip = buildSearchTooltip(tooltipBase);
         UiControl searchToggleButton = JournalControls.iconButton(
                 toolbarX, toolbarY,
                 JournalLayout.SEARCH_ICON_SIZE,
                 this.searchExpanded ? UiAtlas.Icon.CLOSE : UiAtlas.Icon.SEARCH,
-                List.of(
-                        Component.translatable(tooltipBase).withStyle(TooltipBuilder.TITLE),
-                        Component.translatable(tooltipBase + ".rule_table.syntax").withStyle(TooltipBuilder.ACCENT),
-                        tooltipDescription(tooltipBase + ".rule_table.description"),
-                        Component.translatable(tooltipBase + ".rule_mod.syntax").withStyle(TooltipBuilder.ACCENT),
-                        tooltipDescription(tooltipBase + ".rule_mod.description"),
-                        Component.translatable(tooltipBase + ".rule_type.syntax").withStyle(TooltipBuilder.ACCENT),
-                        tooltipDescription(tooltipBase + ".rule_type.description"),
-                        Component.translatable(tooltipBase + ".rule_item.syntax").withStyle(TooltipBuilder.ACCENT),
-                        tooltipDescription(tooltipBase + ".rule_item.description"),
-                        Component.translatable(tooltipBase + ".rule_tag.syntax").withStyle(TooltipBuilder.ACCENT),
-                        tooltipDescription(tooltipBase + ".rule_tag.description")),
+                searchTooltip.plainLines(),
                 this::toggleSearch
         );
         searchToggleButton.setLayoutKey("journal/search-toggle");
-        screen.registerWidget(searchToggleButton);
+        screen.registerWidget(searchToggleButton, searchTooltip);
 
         // 排序图标按钮
         int sortOrderX = this.searchExpanded
@@ -341,7 +321,7 @@ public class CatalogToolbar {
                 CatalogSorter.sortOrderTooltip(this.currentSortOrder),
                 this::cycleSortOrder
         );
-        screen.registerWidget(this.sortButton);
+        screen.registerWidget(this.sortButton, () -> buildSortOrderTooltip(this.currentSortOrder));
 
         // 排序方向按钮
         int sortDirectionX = sortOrderX + JournalLayout.SORT_ICON_SIZE + JournalLayout.TOOLBAR_GAP;
@@ -352,7 +332,7 @@ public class CatalogToolbar {
                 CatalogSorter.sortDirectionTooltip(this.sortDescending),
                 this::toggleSortDirection
         );
-        screen.registerWidget(this.sortOrderButton);
+        screen.registerWidget(this.sortOrderButton, () -> buildSortDirectionTooltip(this.sortDescending));
 
         // 隐藏未解锁条目按钮
         int hideLockedX = sortDirectionX + JournalLayout.SORT_ICON_SIZE + JournalLayout.TOOLBAR_GAP;
@@ -363,7 +343,7 @@ public class CatalogToolbar {
                 hideLockedTooltip(this.hideLocked),
                 this::toggleHideLocked
         );
-        screen.registerWidget(this.hideLockedButton);
+        screen.registerWidget(this.hideLockedButton, () -> buildHideLockedTooltip(this.hideLocked));
 
         if (searchField == null) {
             searchField = new UiTextInput(() -> UnsuspiciousUiTheme.PARCHMENT, font,
@@ -380,9 +360,51 @@ public class CatalogToolbar {
         focusSearchOnCreate = false;
     }
 
-    private static Component tooltipDescription(String translationKey) {
-        return Component.literal("  ")
-                .append(Component.translatable(translationKey).withStyle(TooltipBuilder.LABEL));
+    private static JournalTooltipSpec buildSearchTooltip(String tooltipBase) {
+        return JournalTooltipSpec.builder()
+                .header(UiAtlas.icon(UiAtlas.Icon.SEARCH), Component.translatable(tooltipBase),
+                        TooltipBuilder.TITLE, null)
+                .keyValue(Component.translatable(tooltipBase + ".rule_table.syntax"), TooltipBuilder.ACCENT,
+                        Component.translatable(tooltipBase + ".rule_table.description"))
+                .keyValue(Component.translatable(tooltipBase + ".rule_mod.syntax"), TooltipBuilder.ACCENT,
+                        Component.translatable(tooltipBase + ".rule_mod.description"))
+                .keyValue(Component.translatable(tooltipBase + ".rule_type.syntax"), TooltipBuilder.ACCENT,
+                        Component.translatable(tooltipBase + ".rule_type.description"))
+                .keyValue(Component.translatable(tooltipBase + ".rule_item.syntax"), TooltipBuilder.ACCENT,
+                        Component.translatable(tooltipBase + ".rule_item.description"))
+                .keyValue(Component.translatable(tooltipBase + ".rule_tag.syntax"), TooltipBuilder.ACCENT,
+                        Component.translatable(tooltipBase + ".rule_tag.description"))
+                .footer(null, Component.translatable(KEY_PREFIX + "tooltip.click_action"),
+                        TooltipBuilder.ACCENT, Component.translatable(tooltipBase + ".toggle"))
+                .build();
+    }
+
+    private static JournalTooltipSpec buildSortOrderTooltip(CatalogSorter.SortOrder order) {
+        return JournalTooltipSpec.builder()
+                .header(UiAtlas.icon(sortOrderIcon(order)), CatalogSorter.sortOrderTooltip(order),
+                        TooltipBuilder.TITLE, null)
+                .footer(null, Component.translatable(KEY_PREFIX + "tooltip.click_action"),
+                        TooltipBuilder.ACCENT, Component.translatable(KEY_PREFIX + "tooltip.cycle"))
+                .build();
+    }
+
+    private static JournalTooltipSpec buildSortDirectionTooltip(boolean descending) {
+        return JournalTooltipSpec.builder()
+                .header(UiAtlas.icon(sortDirectionIcon(descending)),
+                        CatalogSorter.sortDirectionTooltip(descending), TooltipBuilder.TITLE, null)
+                .footer(null, Component.translatable(KEY_PREFIX + "tooltip.click_action"),
+                        TooltipBuilder.ACCENT, Component.translatable(KEY_PREFIX + "tooltip.toggle"))
+                .build();
+    }
+
+    private static JournalTooltipSpec buildHideLockedTooltip(boolean hideLocked) {
+        return JournalTooltipSpec.builder()
+                .header(UiAtlas.icon(hideLockedIcon(hideLocked)),
+                        hideLockedTooltip(hideLocked),
+                        hideLocked ? TooltipBuilder.ACCENT : TooltipBuilder.BODY, null)
+                .footer(null, Component.translatable(KEY_PREFIX + "tooltip.click_action"),
+                        TooltipBuilder.ACCENT, Component.translatable(KEY_PREFIX + "tooltip.toggle"))
+                .build();
     }
 
 }

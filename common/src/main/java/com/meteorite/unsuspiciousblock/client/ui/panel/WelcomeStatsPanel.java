@@ -4,6 +4,10 @@ import com.meteorite.meteosuikit.api.style.UiTextScheme;
 
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
+import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import com.meteorite.meteosuikit.api.text.TextScroll;
 import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
@@ -182,7 +186,16 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
             }
         }
         UiRect recent = new UiRect(left, recentY, layout.rightPageWidth() - 24, font.lineHeight * 2 + 4);
-        return recent.contains(x, y) ? UiPointerHit.leaf(this, x, y).withTextTooltip(List.of(latestRecord), recent) : null;
+        if (!recent.contains(x, y)) {
+            return null;
+        }
+        JournalTooltipSpec spec = JournalTooltipSpec.builder()
+                .header(UiAtlas.icon(UiAtlas.Icon.CLOCK),
+                        Component.translatable("screen.unsuspiciousblock.archaeology_journal.welcome.latest_record"),
+                        TooltipBuilder.TITLE, null)
+                .line(latestRecord.copy().withStyle(TooltipBuilder.BODY))
+                .build();
+        return JournalRichTooltip.attach(UiPointerHit.leaf(this, x, y).withTextTooltip(spec.plainLines(), recent), spec);
     }
 
     private void refreshSnapshot() {
