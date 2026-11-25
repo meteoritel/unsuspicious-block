@@ -159,6 +159,21 @@ public final class UiAtlas {
     public static final UiIcon UNKNOWN_ITEM = sprite(180, 0, 16, 16);
 
     /**
+     * 同步玩家自身状态按钮专用 10×10 图标。
+     */
+    public static final UiIcon SYNC_PLAYER = sprite(0, 96, ICON_SIZE, ICON_SIZE);
+
+    /**
+     * 只读条件/门槛未满足（阻塞）状态 10×10 图标，区别于可点击复选框。
+     */
+    public static final UiIcon STATUS_BLOCKED = sprite(10, 96, ICON_SIZE, ICON_SIZE);
+
+    /**
+     * 幸运参数指示 10×10 图标。
+     */
+    public static final UiIcon LUCK_ICON = sprite(20, 96, ICON_SIZE, ICON_SIZE);
+
+    /**
      * 猫之恩惠 HUD 专用可染色中性猫爪图标（16×16）。
      */
     public static final UiIcon CAT_FAVOR_HUD = sprite(196, 0, 16, 16);

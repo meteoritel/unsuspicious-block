@@ -7,7 +7,7 @@ if __package__ in (None, ''):
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from atlas.palette import IconSpec, place_zone1_icons, run_source_preview
+from atlas.palette import UI_PALETTE, IconSpec, place_zone1_icons, run_source_preview
 from drawlib import AtlasBuilder, PixelCanvas, flip_y_ascii
 
 _CHEVRON_DOWN = (
@@ -226,5 +226,43 @@ def apply(atlas: AtlasBuilder) -> None:
         atlas.paint(label, 128 + idx * 12, 0, 12, 12, lambda c, b=bg, h=hi, k=kind: _paint_status_badge(c, b, h, k))
 
     atlas.paint('UNKNOWN_ITEM', 180, 0, 16, 16, _paint_unknown_item)
+
+    # —— 场景页补充 10x10 图标（置于空闲底行 y = 96） ——
+    atlas.place_ascii('SYNC_PLAYER', 0, 96, (
+        '..........',
+        '..III.....',
+        '.ITTTI..e.',
+        '.ITITI..e.',
+        '..III..eEe',
+        '.IIWII..e.',
+        '.IWWWI....',
+        '.IWWWI....',
+        '.IIIII....',
+        '..........',
+    ), UI_PALETTE, expected_size=(10, 10))
+    atlas.place_ascii('STATUS_BLOCKED', 10, 96, (
+        '..........',
+        '..........',
+        '..Rr..rR..',
+        '...RrRr...',
+        '....RR....',
+        '....RR....',
+        '...RrRr...',
+        '..Rr..rR..',
+        '..........',
+        '..........',
+    ), UI_PALETTE, expected_size=(10, 10))
+    atlas.place_ascii('LUCK_ICON', 20, 96, (
+        '..........',
+        '..ee..ee..',
+        '.ehEeEeEe.',
+        '.eEEeeEEe.',
+        '..eeIIee..',
+        '.eEEeeEEe.',
+        '.eEeEeEEe.',
+        '..ee..ee..',
+        '....I.....',
+        '...II.....',
+    ), UI_PALETTE, expected_size=(10, 10))
 if __name__ == '__main__':
     raise SystemExit(run_source_preview('scenario', apply, bg='#F3E7C8'))

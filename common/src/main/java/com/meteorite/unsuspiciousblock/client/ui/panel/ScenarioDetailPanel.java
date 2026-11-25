@@ -223,22 +223,22 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         int actionX = x + Math.max(0, width - actionWidth);
         summary.setBounds(x, headerY, 18, 18);
         int readoutAreaWidth = Math.max(0, actionX - x - 21 - 3);
-        int pillGap = 3;
-        int luckWidth = Math.max(0, (readoutAreaWidth - pillGap) / 2);
-        int enchWidth = Math.max(0, readoutAreaWidth - pillGap - luckWidth);
-        luck.setBounds(x + 21, headerY + 1, luckWidth, 16);
-        enchantments.setBounds(x + 21 + luckWidth + pillGap, headerY + 1, enchWidth, 16);
-        probeButton.setBounds(actionX, headerY + 1, iconSize, iconSize);
-        paramsButton.setBounds(actionX + iconSize + iconGap, headerY + 1, iconSize, iconSize);
-        expandButton.setBounds(actionX + (iconSize + iconGap) * 2, headerY + 1, iconSize, iconSize);
-        calculateButton.setBounds(x, y + 23, width, 16);
-        int panelTop = y + 43;
-        int contentHeight = Math.max(1, layout.rightPageBottom() - 8 - panelTop);
-        conditions.setBounds(x + 6, panelTop + 6, Math.max(0, width - 12), Math.max(0, contentHeight - 12));
-
         ScenarioTableSnapshot nextSnapshot = JournalClientConnection.scenario().snapshot(table);
         var choice = nextSnapshot == null ? null : nextSnapshot.choice();
         CatalogTableDto structure = nextSnapshot == null ? null : nextSnapshot.structure();
+        boolean showEnchantments = structure != null && structure.options() != null && choice != null
+                && (!structure.options().enchantments().isEmpty()
+                || !choice.params().toolEnchantments().isEmpty());
+        if (showEnchantments) {
+            int pillGap = 3;
+            int luckWidth = Math.max(0, (readoutAreaWidth - pillGap) / 2);
+            int enchWidth = Math.max(0, readoutAreaWidth - pillGap - luckWidth);
+            luck.setBounds(x + 21, headerY + 1, luckWidth, 16);
+            enchantments.setBounds(x + 21 + luckWidth + pillGap, headerY + 1, enchWidth, 16);
+        } else {
+            luck.setBounds(x + 21, headerY + 1, readoutAreaWidth, 16);
+            enchantments.setBounds(0, 0, 0, 0);
+        }
         String nextStatus = nextSnapshot == null ? "uncomputed" : nextSnapshot.status();
         Language nextLanguage = Language.getInstance();
         if (!documentDirty && snapshot == nextSnapshot && language == nextLanguage) return;
@@ -289,6 +289,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
 
         conditionTree = ScenarioPageBuilder.buildConditions(Objects.requireNonNull(snapshot),
                 () -> JournalClientConnection.scenario().clearNotes(),
+                () -> JournalClientConnection.scenario().select(currentTable, List.of(), choice.params()),
                 conditionId -> JournalClientConnection.scenario().toggleCondition(currentTable, conditionId),
                 target -> ScenarioRecommendationOverlay.open(overlays, currentTable, target), locateTarget);
         conditionView.setContent(conditionTree);
@@ -313,12 +314,16 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         summary.configure(font, Component.empty(), JournalTextColors.NAME,
                 new UiIcon.Item(new ItemStack(BuiltInRegistries.ITEM.get(choice.params().toolId()))),
                 List.of(toolName.copy().withStyle(TooltipBuilder.BODY)), null);
-        configureValue(font, luck, "params.luck_short",
+        configureValue(font, luck, UiAtlas.LUCK_ICON, "params.luck_short",
                 String.format(Locale.ROOT, "%s", choice.params().luck()));
-        configureValue(font, enchantments, "params.enchantments_short",
-                String.valueOf(choice.params().toolEnchantments().size()));
+        boolean showEnchantments = !options.enchantments().isEmpty() || !choice.params().toolEnchantments().isEmpty();
+        enchantments.setVisible(showEnchantments);
+        if (showEnchantments) {
+            configureValue(font, enchantments, null, "params.enchantments_short",
+                    String.valueOf(choice.params().toolEnchantments().size()));
+        }
 
-        probeButton.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.BIOME),
+        probeButton.configure(font, Component.empty(), UiAtlas.SYNC_PLAYER,
                 List.of(ScenarioSession.text("probe.button").copy().withStyle(TooltipBuilder.TITLE),
                         ScenarioSession.text("probe.hint").copy().withStyle(TooltipBuilder.LABEL)),
                 () -> JournalClientConnection.scenario().requestPlayerProbe(currentTable));
@@ -333,19 +338,24 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         Component failure = "failed".equals(rawStatus)
                 ? ScenarioSession.text("failure." + Objects.requireNonNull(snapshot).failure())
                 : null;
+        boolean isCached = "cached".equals(rawStatus);
+        List<Component> calcTooltip = failure != null
+                ? List.of(failure.copy().withStyle(TooltipBuilder.NEGATIVE))
+                : isCached
+                ? List.of(ScenarioSession.text("view_drops").copy().withStyle(TooltipBuilder.TITLE),
+                ScenarioSession.text("cached_hint").copy().withStyle(TooltipBuilder.LABEL))
+                : List.of(ScenarioSession.text("calculate").copy().withStyle(TooltipBuilder.TITLE),
+                ScenarioSession.text(rawStatus).copy().withStyle(TooltipBuilder.LABEL));
         calculateButton.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
         calculateButton.configure(font,
-                ScenarioSession.text("cached".equals(rawStatus)
-                        ? "view_drops"
+                ScenarioSession.text(isCached
+                        ? "view_drops_ready"
                         : "uncomputed".equals(rawStatus) || "failed".equals(rawStatus)
                         || "query_failed".equals(rawStatus) ? "calculate" : "results.status." + rawStatus),
                 UiAtlas.statusBadge(rawStatus),
-                failure == null
-                        ? List.of(ScenarioSession.text("calculate").copy().withStyle(TooltipBuilder.TITLE),
-                        ScenarioSession.text(rawStatus).copy().withStyle(TooltipBuilder.LABEL))
-                        : List.of(failure.copy().withStyle(TooltipBuilder.NEGATIVE)),
+                calcTooltip,
                 () -> {
-                    if ("cached".equals(rawStatus)) {
+                    if (isCached) {
                         viewDrops.run();
                     } else {
                         JournalClientConnection.scenario().request(currentTable, true);
@@ -367,11 +377,13 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         expandButton.setAccessibleName(ScenarioSession.text("frame.expand"));
     }
 
-    private static void configureValue(Font font, UiControl control, String key, String value) {
+    private static void configureValue(Font font, UiControl control, @Nullable UiIcon icon, String key, String value) {
         Component full = ScenarioSession.text(key, value);
-        Component label = font.width(full) <= control.bounds().width() - 4 ? full : Component.literal(value);
+        int iconReserve = icon == null ? 0 : icon.width() + 4;
+        Component label = font.width(full) <= control.bounds().width() - 4 - iconReserve
+                ? full : Component.literal(value);
         control.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.LABEL);
-        control.configure(font, label, null, List.of(full.copy().withStyle(TooltipBuilder.BODY)), null);
+        control.configure(font, label, icon, List.of(full.copy().withStyle(TooltipBuilder.BODY)), null);
     }
 
     static void renderConditionBackground(GuiGraphics graphics, UiDocumentTarget target, boolean selected) {
