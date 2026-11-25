@@ -15,6 +15,7 @@
 - [Pottery Wheel](en-Pottery-Wheel)
 - [Unsuspicious Blocks](en-Unsuspicious-Blocks)
 - [Purrmint](en-Purrmint)
+- [Spark Dust and Rewind Dust](en-Spark-and-Rewind-Dust)
 - [Compatibility and Settings](en-Compatibility-and-Settings)
 - [FAQ](en-FAQ)
 
@@ -31,7 +32,8 @@
 - [纹饰陶轮台](zh-Pottery-Wheel)
 - [不可疑方块](zh-Unsuspicious-Blocks)
 - [咕噜荆芥](zh-Purrmint)
-- [联动与服务器设置](zh-Compatibility-and-Settings)
+- [花火粉与回溯粉](zh-Spark-and-Rewind-Dust)
+- [联动与设置](zh-Compatibility-and-Settings)
 - [常见问题](zh-FAQ)
 
 ### Links / 链接

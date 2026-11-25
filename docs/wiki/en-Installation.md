@@ -1,36 +1,43 @@
 # Installation
 
-> For Minecraft 1.21.1 and Unsuspicious Block 1.5.2.
+> For Minecraft 1.21.1 and Unsuspicious Block 1.6.0.
 
 ## Requirements
 
-- Minecraft 1.21.1
-- Java 21
-- Fabric Loader 0.17.0 or later, or NeoForge 21.1.221 or later
-- The Fabric version requires Fabric API; the NeoForge version has no additional required dependencies
+- **Minecraft**: 1.21.1
+- **Java**: 21
+- **Mod Loader**: Fabric Loader 0.17.0+ or NeoForge 21.1.221+
+- **Dependencies**: Fabric requires Fabric API; NeoForge requires no extra mods (Meteo's UI Kit is bundled inside both JARs, so no separate download is needed)
 
-## Single-player
+## Single-Player Installation
 
-1. Install the matching Fabric or NeoForge launcher profile.
-2. Put the Unsuspicious Block `.jar` matching your loader into the `mods` folder.
-3. Fabric users should also add Fabric API.
-4. Launch Minecraft 1.21.1 and confirm the mod is loaded in the main menu or mod list.
+1. Set up a matching Fabric or NeoForge profile for Minecraft 1.21.1.
+2. Place the Unsuspicious Block `.jar` for your loader into the `mods` folder.
+3. For Fabric, also place Fabric API into the `mods` folder.
+4. Launch Minecraft 1.21.1 and verify the mod appears in your mod list.
 
 ## Multiplayer
 
-Both the client and the server must have the mod installed, using the same Minecraft, loader, and mod versions. With the mod installed on the client only, journal data syncing, scanning, and excavation will not work correctly.
+Both the client and the server must install Unsuspicious Block `1.6.0`. With the mod installed on the client only, journal syncing, Suspicious Reader scanning, direct shovel excavation, and panning spots will not work.
 
 ## Optional Integrations
 
-The following mods are not required to run this mod:
+None of the following mods are required:
 
-- **JEI**: View recipes, plus a dedicated recipe category for the Decorated Pottery Wheel.
-- **REI / EMI**: Can be used to view regular recipes; this mod does not hard-depend on them.
-- **Jade**: View the loot already scanned from suspicious blocks.
-- **Trinkets** (Fabric) or **Curios** (NeoForge): Provide accessory slots for the Archaeology Journal, Eye of Cat, and Specimen Box.
-- **Artifacts**: Lets compatible artifacts keep working while stored in the Specimen Box.
-- **Lootr**: Optional compatibility provided by the NeoForge build.
+- **JEI**: View recipes, the dedicated Decorated Pottery Wheel category, and furnace firing recipes for unfired pots and sherds; press `U` / `R` on unlocked items in the Archaeology Journal, or hover any item and press `C` to search it in the journal.
+- **REI / EMI**: View regular crafting and smelting recipes.
+- **Jade**: Displays loot in suspicious blocks you have scanned, sealed contents in Unsuspicious Blocks, and panning spot types, remaining uses, and refill/despawn timers.
+- **Trinkets** (Fabric) or **Curios** (NeoForge): Adds accessory slots for the Archaeology Journal, Specimen Box, and Eye of Cat.
+- **Artifacts**: Allows compatible artifacts stored inside a carried Specimen Box to keep their effects active.
+- **Mekanism** (NeoForge `10.7.19+`, verified on `10.7.19.85`): Fires unfired sherds and pots in the Energized Smelter while preserving their patterns.
+- **Create** (NeoForge `6.0.10`): Bulk-fires unfired sherds and pots with Encased Fans while preserving their patterns.
+- **Relics**: Adds a small chance to pull Relics items during open-water Mud Dredging.
+- **Lootr** (NeoForge only): Tracks Lootr containers and suspicious blocks per player.
 
-## Updating or Switching Loaders
+## Upgrading or Switching Loaders
 
-Keep a world backup when switching between Fabric and NeoForge. The Archaeology Journal’s world rules travel with the save in `serverconfig/unsuspiciousblock-loot-tracking.json`. When upgrading from an older version, open the world with its original loader first to import its settings. Each loader manages its own global settings and optional integrations.
+Back up your world before upgrading or switching between Fabric and NeoForge.
+
+- When upgrading from `1.5.2` or earlier to `1.6.0`, **update both the client and the server**.
+- World loot-tracking rules are shared between Fabric and NeoForge in `<world>/serverconfig/unsuspiciousblock-loot-tracking.json`. Opening an older world in `1.6.0` for the first time automatically imports legacy rules and log settings; if you plan to switch loaders, open the world once in `1.6.0` using its original loader first so the settings import completes.
+- Loader-specific global configs (such as panning settings) and optional integrations are managed separately by each loader. See [Compatibility and Settings](en-Compatibility-and-Settings).

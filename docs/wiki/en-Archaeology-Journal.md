@@ -1,80 +1,94 @@
 # Archaeology Journal
 
-The Archaeology Journal records the loot you find, where you found it, and the conditions for obtaining it, helping you plan your next expedition.
+The Archaeology Journal tracks what loot you have found and helps you figure out where undiscovered or conditional items come from, what conditions they require, and how likely they are to drop.
 
-## Obtaining
+## Crafting and Opening
 
-Combine a book and a brush in a crafting table to make the Archaeology Journal.
+Combine **1 Book** and **1 Brush** in a crafting grid to craft the Archaeology Journal.
 
 ![Crafting an Archaeology Journal with a book and a brush](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-archaeology-journal.png)
 
 - Right-click the journal in hand to open it.
-- Press `C` (default) to open a journal you are carrying.
-- When opened via the hotkey, the journal can sit in your inventory; with a Curios/Trinkets integration installed, it can also rest in an accessory slot.
-- Hover over an item in your inventory and press `C` to look it up in the journal. If a matching entry is found, the journal opens directly to it. With JEI installed, this also works in JEI's item list.
+- Press `C` (default) while carrying it in your inventory, an accessory slot (with Trinkets / Curios), or a [Specimen Box](en-Specimen-Box).
+- Hover over any item in your inventory or JEI and press `C` to search the journal by that item's registry ID and jump directly to matching entries.
+- Press `Backspace` or your mouse Back button to step backward through your page history; your reading position is saved per world and per player.
 
-## Home Page
+## Home Page and Categories
 
-The right side of the first page after opening the journal shows collection statistics: number of brushes, loot chests opened, current log entries and noted entries, plus the time of the latest record and the most recently discovered item.
+The right side of the opening page displays your collection stats: brush count, loot chests opened, current log count and noted logs, plus the time and item of your most recent discovery.
 
-## Catalog
+The left catalog loads seven categories and table hierarchies right away while calculating drop odds in the background (prioritizing whichever table you are viewing):
 
-The Catalog groups possible finds by loot source. New sources and items unlock as you explore.
+- **Brushing**: Suspicious block loot tables.
+- **Ruins Chests**: Buried Treasure, Ancient City, and other structure containers.
+- **Fishing & Dredging**: Vanilla fishing and Mud Dredging drops.
+- **Pots**: Decorated pot loot tables.
+- **Panning**: River Shimmers and Nether Glimmers.
+- **Fossil Gathering**: Bonus drops from the Fossil Hunter enchantment.
+- **Other**: Tracked tables outside the dedicated categories (such as custom or mod-added tables).
 
-The Catalog supports:
+## Catalog, Search, and Item Grid
 
-- Searching and sorting
-- Favoriting entries
-- Hiding locked (undiscovered) content
-- Viewing item acquisition conditions and estimated probabilities
-- Viewing how loot sources are related
+The catalog supports continuous scrolling, `WASD` / arrow-key navigation, `Shift + Click` to favorite entries, sorting (Default, Name, Unlock Status, Item Count, Favorites, Updated), and a **Hide Locked** toggle.
 
-The probabilities shown are estimates. Your actual finds also depend on the biome, dimension, tool enchantments, and other conditions.
+### Search Prefixes
 
-## Log
+| Syntax | Searches by |
+|---|---|
+| Plain text | Loot table name |
+| `@text` | Mod or namespace |
+| `%text` | Loot table type |
+| `$text` | Item name |
+| `$#text` | Item tag |
 
-The Log records discoveries that have actually happened, including:
+### Item Cards and Spoiler Protection
 
-- Items found and their quantities
-- Coordinates, dimension, and biome
-- Structure or container source
-- Time of discovery
-- The detailed source of the loot
+- **Undiscovered items** appear with an unknown icon ("Unparsed") and hide their name, drop odds, and exact rules until you find them.
+- **Discovered items** display both **simulated drop odds** and any **configured trigger chance**, along with luck dependency and item modifiers (enchantments, durability ranges, stack counts, etc.).
+- Items drawn from the same tag collapse into a group card; child tables referenced by a parent table appear as clickable subtable entries.
+- With **JEI** installed, unlocked items on the Intro page and item grid support `U` (uses) and `R` (recipes); closing JEI returns you to the journal.
 
-Logs can be grouped by time, dimension, biome, and note status. Opening a log entry's details lets you add a note and copy a teleport command for returning to the discovery site.
+## Scenarios and On-Demand Odds Simulation
 
-Each loot source has its own log records. Servers can set a limit for each source; once it is reached, the oldest unprotected records are removed.
+Many drops depend on biomes, weather, open water, tool enchantments, or luck. Use the **Scenarios** bar above the item grid to test your actual setup:
 
-## What Unlocks Records
+- **Combine World Conditions**: Click the scenario selector to check conditions together (such as biome, rain, or open water).
+- **Adjust Tool, Enchantments, and Luck**: Click **Params…** to choose a tool, set enchantment levels, and adjust luck (`-5` to `10`), or click **Sync self** to auto-fill your current location, weather, held tool, enchantments, and luck.
+- **Calculate**: Click **Run** to run a 10,000-sample simulation on the server for those inputs (results are cached).
+- **Condition Tree & Recommended Setup**: Expand the **Condition tree** (including a zoomable, draggable lightbox view) to inspect branch status, or request a **Recommended setup** for a discovered item or branch to see what conditions and loadout will unlock it.
 
-The following actions advance the journal's catalog and collection progress:
+## Logs and Coordinates
 
-- Brushing suspicious blocks
-- Excavating decorated pots
+The **Log** tab records every completed discovery, including items and counts, coordinates, dimension, biome, structure, timestamp, and exact source.
+
+- Group logs by time range, dimension, biome, or note status.
+- Open a log entry to write a note or copy a `/tp` command back to the site.
+- Delete single entries, batch-delete selected entries, clear a table's logs, or clear all logs (deleting logs keeps your unlocked items and advancements intact).
+- Configure per-table auto-retention limits or prune old entries immediately; **noted logs are always protected from auto-cleanup**.
+
+## What Unlocks Entries and Progress?
+
+The following actions unlock catalog entries and create logs:
+
+- Brushing suspicious blocks (or extracting scanned loot with the [Archaeological Shovel](en-Reader-and-Shovel))
+- Breaking loot-bearing decorated pots
 - Catching fishing loot
-- Opening loot chests
-- Panning for loot or finding loot with the Fossil Hunter enchantment
+- Opening loot containers (including chest minecarts and other storage entities)
+- [Panning](en-Fishing-and-Panning) or mining natural bone blocks with [Fossil Hunter](en-Lost-Pages-and-Enchantments)
 
-The Suspicious Reader's scan results help you learn where suspicious blocks are and what they contain, but the Log records a full discovery only when you actually obtain the loot.
+> Scanning with the [Suspicious Reader](en-Reader-and-Shovel) previews a block's contents, but progress and logs only finalize when you actually collect the loot.
 
-## Collection Progress and Rewards
+Unlocking every static/integration item in a table reaches 100% completion and grants a one-time reward of **1 Ancient Coin**.
 
-When every item in a catalog entry and its sources listed beneath it has been unlocked at least once, the entry reaches 100% completion and grants a one-time reward of 1 Ancient Coin.
+## Managing Loot Tables and World Rules
 
-## What Can Be Tracked
+Open **Manage tracked loot tables** from the journal's left sidebar to inspect all tracked and untracked tables:
 
-By default, the journal covers common archaeology finds, decorated pots, fishing, buried treasure, the Ancient City, and this mod's special loot. Other mods and datapacks may add more loot sources to the Catalog.
-
-### Managing Loot Tables
-
-Open loot table management from the journal's sidebar. **Recently Encountered** shows recent sources from activities such as brushing, panning, fishing, and opening containers. Filter by tracking status or search by name or full ID. Select a table to see its matching rules and parent tables.
-
-Editors can preview additions, removals, and moves before saving. The page shows when saved rules take effect. Supplemental names are shared by the worlds in the server instance. Choose a language and review the changes before saving imported names. Resource pack names take priority.
-
-## JEI Integration
-
-With JEI installed, item entries in the journal's catalog support JEI's `U` (uses) and `R` (recipes) hotkeys; closing the JEI overlay returns you to the Archaeology Journal automatically.
+- Filter by **All / Tracked / Untracked / Recently Encountered**, or search by name or full ID (`namespace:path`).
+- See whether a table is a **Top-level catalog entry** or **Included through a parent table**, along with matching rules and parent tables.
+- With permission (single-player host or server OP level 2), edit **World Rules** to toggle built-in rules, add prefix/exact rules, or exclude tables, previewing additions, removals, and moves before saving.
+- Admins can also edit and import supplemental table names per language (shared across worlds on the server instance; `en_us` must be set first, and resource pack names take priority).
 
 ## Multiplayer
 
-Journal progress and logs are saved per player. On multiplayer servers, every player has their own unlock state and discovery records; the mod must be installed on both the client and the server.
+Progress, favorites, and logs are saved separately per player. Both client and server must have the mod installed.

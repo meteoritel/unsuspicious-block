@@ -1,46 +1,54 @@
 # Lost Pages and Enchantments
 
-Lost Pages connect archaeology exploration to four dedicated enchantments. Every enchanted book forged from a Lost Page is a random result.
+This mod adds four enchantments focused on fishing, shearing, brushing, and fossil mining, along with a Smithing Table recipe that turns Lost Pages into enchanted books.
 
 ## Obtaining Lost Pages
 
-Lost Pages have an 8% chance to appear in the rare archaeology loot pool of Trail Ruins, and can also be recovered by panning in rivers (especially with high-luck Gold Pan runs). The Archaeology Journal records them once you discover the relevant loot.
+Lost Pages can be found from:
+
+- **Trail Ruins**: 8% chance in the rare archaeology loot pool.
+- **River Panning**: Dropped when panning **Shimmers** with a [Copper or Gold Pan](en-Fishing-and-Panning) (and available in the high-luck relic pool at `+1.0` total luck).
+- **Fossil Hunter**: Chance to drop when mining natural bone blocks with the Fossil Hunter enchantment.
 
 ## Crafting Base Pages
 
-Place 3 pitcher plants in a row in a crafting table to get 3 Base Pages. Each Base Page can also be crafted on its own into 1 paper.
+Place **3 Pitcher Plants** in a horizontal row on a crafting table to craft **3 Base Pages**. A single Base Page can also be crafted back into 1 piece of paper.
 
 ![Three pitcher plants craft into three Base Pages](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-base-page.png)
 
 ## Forging a Random Enchanted Book
 
-Place one of each into a smithing table, from left to right:
+Place the following items into a **Smithing Table** from left to right:
 
-1. Base Page
-2. Book
-3. Lost Page
+1. **Base Page** (Template slot)
+2. **Book** (Base slot)
+3. **Lost Page** (Addition slot)
 
 ![Forging a random enchanted book with a Base Page, book, and Lost Page](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-enchanted-book.png)
 
-The output is a random enchanted book. The result may be:
+Taking the output rolls an enchanted book with one of three outcomes:
 
-- A book with one of this mod's enchantments
-- A book with a vanilla enchantment
-- A book containing both a mod enchantment and a vanilla enchantment
+- **20% chance**: A mod enchantment only (random level)
+- **30% chance**: A mod enchantment plus vanilla enchantments (rolled at experience level 10–20)
+- **50% chance**: Vanilla enchantments only (rolled at experience level 15–35)
 
 ## The Four Enchantments
 
-| Enchantment | Applies to | Effect |
-|---|---|---|
-| Mud Dredging I–III | Fishing Rod | Fishing can dredge up one extra item: 20% at level I, +10% per additional level. Shallow water pulls basic silt debris, while open water adds regional drift cargo, inland freshwater finds, coastal sherds/shipwreck barrels, or focused swamp loot. |
-| Textile Recovery | Shears | Shearing sheep drops an extra 1–3 string. |
-| Precision Excavation I–III | Brush | When brushing suspicious blocks, a chance to double that brush's loot: 28%, 44%, and 60% respectively. |
-| Fossil Hunter | Pickaxe | Mining naturally generated bone blocks has a 50% chance to grant extra fossil loot. The possible rewards vary by dimension. |
+| Enchantment | Max Level | Applies To | Sources | Effect |
+|---|---|---|---|---|
+| **Mud Dredging** | III | Fishing Rod | Lost Page, Enchanting Table, Villager Trade | Adds a chance to dredge 1 bonus drop per catch: 20% at Level I, +10% per extra level (40% at III). Drops vary by open water and biome (see [Fishing and Panning](en-Fishing-and-Panning)). |
+| **Textile Recovery** | I | Shears | Lost Page, Villager Trade, Anvil | Shearing sheep always drops 1–3 extra string. |
+| **Precision Excavation** | III | Brush | Lost Page, Villager Trade, Anvil | Brushing a suspicious block has a **28% / 44% / 60%** chance to double that brush's loot. |
+| **Fossil Hunter** | I | Pickaxe | Lost Page, Random Loot Enchantments (Treasure) | Breaking naturally generated bone blocks has a **50%** chance to trigger a dimension-specific fossil loot roll. |
 
-### Fossil Hunter Restrictions
+### Fossil Hunter Details
 
-Fossil Hunter only works on bone blocks recorded as naturally generated at world creation. Bone blocks placed by players or machines, and bone blocks that have already been processed, do not trigger the bonus; no bonus is granted in creative mode or when block drops are disabled either.
+- **Natural Bone Blocks Only**: Only bone blocks generated with chunks or structures qualify. Player-placed or machine-placed bone blocks, creative mode breaks, worlds with `doTileDrops` disabled, or previously harvested positions do not trigger bonus loot.
+- **Dimension Tables & Fortune**:
+  - **Overworld**: Drops bones, bone meal, flint, coal, iron ingots, copper ingots, redstone, amethyst shards, plus chances for Ancient Coins (55%), Lost Pages (20%), and Artifacts (10% when Artifacts is installed).
+  - **Nether**: Drops bones, bone meal, quartz, gold nuggets, glowstone dust, blaze powder, magma cream, gold ingots (40%), Ancient Coins (35%), Lost Pages (15%), Artifacts (10%), and Netherite Scrap (8%).
+  - Ore-like drops and Netherite Scrap scale with **Fortune** on your pickaxe.
 
-### How to View Enchantment Effects
+### Viewing Enchantment Candidates
 
-The detailed effects of ordinary enchanted books can be viewed in the item tooltip. While holding an [Eye of Cat](en-Eye-of-Cat), you can also see the full information of every candidate enchantment in the enchanting table.
+Carry an [Eye of Cat](en-Eye-of-Cat) to view the full list of candidate enchantments in the Enchanting Table before spending levels.

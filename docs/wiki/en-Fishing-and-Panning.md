@@ -1,25 +1,66 @@
-# Fishing Dredging and Panning
+# Fishing and Panning
 
-Fishing can dredge up shipwreck cargo and aquatic finds, while panning recovers materials and relics from river sediment and Nether lava slag.
+Beyond brushing ruins, you can fish with Mud Dredging to pull extra cargo from open water, or use pans at shimmering river and Nether lava spots to wash out clay, minerals, and relics.
 
 ## Mud Dredging
 
-With Mud Dredging on a fishing rod, a catch can include one extra item. Level I has a 20% chance, increasing by 10% per level. Shallow water only pulls basic clay and mud debris; casting into open water is required to reach the regional loot pools.
+Enchanting a fishing rod with [Mud Dredging](en-Lost-Pages-and-Enchantments) (I–III) adds a chance to catch 1 bonus item per reel-in: **20%** at Level I, increasing by **10%** per extra level (**40%** at Level III).
 
-Open water outside swamps varies by environment: generic catches bring driftwood cargo (paper, string, leather, bowls, compasses, clocks); inland freshwater adds lanterns, Bottles o' Enchanting, and emeralds; badlands and frozen waters add small regional flavor drops; and warm or cold oceans and beaches offer distinct pottery sherds alongside Coast Armor Trim Smithing Templates and shipwreck barrels. When the Relics mod is installed, open-water catches also have a small chance to bring up a relic.
+### Shallow vs. Open Water
 
-Swamp and mangrove swamp open water pulls from a focused swamp pool containing sticks, sugar, spider eyes, gunpowder, redstone, glowstone dust, slime balls, mangrove propagules, damaged enchanted golden axes, a few potions, and a music disc.
+- **Shallow Water**: Only pulls basic silt items (clay balls, mud, glass bottles, bone meal, lily pads).
+- **Open Water**: Unlocks regional loot pools; if **Relics** is installed, open-water catches also have a **2%** chance to roll a Relics item.
 
-Barrels dredged exclusively in ocean and beach biomes are items that roll full Shipwreck Map or Shipwreck Treasure chest loot when opened. Ancient Coins and Lost Pages do not drop from Mud Dredging.
+### Regional Pools
+
+- **Non-Swamp Open Water**:
+  - **Driftwood Cargo**: Paper, string, leather, bowls, compasses, and clocks.
+  - **Inland Freshwater** (outside oceans and beaches): Adds lanterns, Bottles o' Enchanting, and emeralds.
+  - **Frozen & Badlands Waters**: Frozen rivers/oceans/snowy beaches add packed ice; badlands waters add gold nuggets.
+  - **Warm & Cold Oceans and Beaches**: Drop biome-grouped pottery sherds (Warm: Angler/Shelter/Snort; Cold: Blade/Explorer/Mourner/Plenty), **Coast Armor Trim Smithing Templates**, and **Shipwreck Barrels**.
+  - **Shipwreck Barrels**: Place and open a dredged barrel to roll full vanilla Shipwreck Map or Shipwreck Treasure chest loot.
+- **Swamp & Mangrove Swamp Open Water**: Pulls from a dedicated swamp pool containing sticks, sugar, spider eyes, gunpowder, redstone, glowstone dust, slime balls, mangrove propagules, fermented spider eyes, damaged enchanted golden axes, Water Breathing / Night Vision / Poison potions, and Music Disc `13`.
+
+> Ancient Coins and Lost Pages do not drop from Mud Dredging.
 
 ## Panning
 
-Look at a panning shimmer and hold use. Each pan takes five seconds and consumes one durability. River panning always yields clay alongside sand, gravel, or flint, and also rolls alluvial ore silt (iron nuggets, raw copper, coal, gold nuggets) and river finds (Ancient Coins, regional sherds split between regular and frozen rivers, nautilus shells, and Lost Pages).
+### Crafting the Three Pans
 
-Pan choice and total luck strongly shape river rewards:
+All three pans can be repaired on an anvil with their base material and accept Durability enchantments (such as Unbreaking and Mending):
 
-- **Obsidian Pan** suffers a heavy luck penalty in water, lowering ore silt yields and preventing gold nuggets, riverbed minerals, and Lost Pages.
-- **Copper Pan** pans at baseline luck, offering steady clay and finds plus a modest chance to roll riverbed minerals such as lapis lazuli, amethyst shards, emeralds, or diamonds.
-- **Gold Pan** raises rare drop odds, can regenerate natural river shimmers, and greatly increases riverbed mineral odds; reaching `+1.0` total luck also unlocks an exclusive high-luck relic pool with extra Ancient Coins, Lost Pages, Bottles o' Enchanting, name tags, rare sherds, and golden apples.
+| Pan | Crafting Recipe | Durability | Anvil Repair | Targets & Traits |
+|---|---|---:|---|---|
+| **Copper Pan** | 4 copper ingots + 1 iron nugget | 32 | Copper Ingot | River **Shimmers** only; baseline luck for steady panning. |
+| **Gold Pan** | 4 gold ingots + 1 gold nugget | 24 | Gold Ingot | River **Shimmers** only; grants **`+1.0` luck bonus** by default and a **10%** chance to regenerate a new spot nearby after harvesting a natural spot. |
+| **Obsidian Pan** | 4 obsidian + 1 crying obsidian | 64 | Obsidian | **The only pan usable on Nether Glimmers**; can pan water as well, but applies a **`-1.0` luck penalty** in rivers, lowering mineral silt and preventing gold nuggets, riverbed minerals, and Lost Pages. |
 
-The Obsidian Pan can also pan Nether lava Glimmers. Lava panning yields Nether slag, molten minerals (including obsidian for field repairs), biome-flavored Nether finds, and occasionally netherite scrap.
+Arrange ingredients in a U-shape in a crafting table (top-left/top-right main material, bottom-left/bottom-right main material + bottom-center core):
+
+- Copper Pan: `Copper _ Copper` / `Copper Iron_Nugget Copper`
+- Gold Pan: `Gold _ Gold` / `Gold Gold_Nugget Gold`
+- Obsidian Pan: `Obsidian _ Obsidian` / `Obsidian Crying_Obsidian Obsidian`
+
+### How Panning Works & Spot Types
+
+Look at a panning spot and hold right-click for **5 seconds** (100 ticks) to finish one pan, consuming **1 durability** and **1 use** on the spot (default **3 uses** per spot). The surface glow dims as uses drop, and loot launches toward you upon completion.
+
+- **Shimmers (River water)**:
+  - **Worldgen Spots (Permanent)**: Generate with new chunks, ignore the dimension cap, and never despawn naturally. Empty worldgen spots keep emitting faint rising particles and gradually refill 1 use every **20–40 minutes**.
+  - **Natural Spots (Temporary)**: Attempt to spawn near players in rivers roughly every **30 seconds** (with a "Something fell into the water" alert), lasting **20–40 minutes** (default cap of 5 per dimension). Depleting one puts the surrounding `3×3` chunks on a 30-minute spawn cooldown.
+  - **Special Spots (Temporary)**: Regenerated nearby on the same water level by a Gold Pan harvesting a natural spot.
+  - **Frozen Water**: If the water beneath a Shimmer freezes into regular ice, panning pauses until the ice melts.
+- **Glimmers (Nether lava)**:
+  - Purple-glowing permanent spots placed during Nether world generation that refill over time. Only the **Obsidian Pan** can harvest Glimmers.
+- With **Jade** installed, aiming at any panning spot shows whether it is temporary or permanent, its remaining uses, and its despawn or next-refill timer.
+
+### Panning Loot
+
+- **River Panning**:
+  - Always drops **3–6 clay balls** plus sand, gravel, or flint.
+  - Rolls alluvial ore silt (iron nuggets, raw copper, coal, gold nuggets) and finds (Ancient Coins, nautilus shells, Lost Pages, plus Sheaf/Friend sherds in regular rivers or Burn/Howl sherds in frozen rivers).
+  - **Riverbed Minerals** (lapis lazuli, amethyst shards, emerald, diamond): Scales strongly with luck—modest with a Copper Pan, much higher with a Gold Pan, disabled on Obsidian Pan.
+  - **High-Luck Relics**: Reaching **`+1.0` total luck** or more (such as using a Gold Pan or Luck effects) unlocks bonus Ancient Coins, Lost Pages, Bottles o' Enchanting, name tags, Heart/Heartbreak/Danger sherds, and golden apples.
+- **Nether Lava Panning**:
+  - Consistently yields basalt, blackstone, gilded blackstone, magma cream, soul sand, and soul soil, alongside gold nuggets, quartz, glowstone dust, obsidian, and crying obsidian (handy for repairing your Obsidian Pan on the go).
+  - Can also yield blaze powder, ghast tears, fire charges, **netherite scrap**, and biome-specific Nether drops (ender pearls in Warped Forests, nether wart in Crimson Forests, bone blocks in Soul Sand Valleys, gilded blackstone in Basalt Deltas, and gold ingots in Nether Wastes).

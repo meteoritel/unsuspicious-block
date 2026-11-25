@@ -11,21 +11,22 @@
 
 ---
 
-## What this mod does / 模组简介
+## What This Mod Adds / 模组内容概览
 
-Unsuspicious Block adds exploration tools and a discovery journal to Minecraft archaeology. You can scan suspicious blocks, quickly retrieve identified loot, and organize your finds, their sources, conditions, and locations in the Archaeology Journal.
+Unsuspicious Block expands Minecraft archaeology with tools to locate and excavate suspicious blocks, a journal to track loot tables and drop odds, river and Nether panning, pottery duplication, protective Purrmint plants, and Rewind Dust for regenerating world structures.
 
-Unsuspicious Block 为 Minecraft 的考古内容增加了更完整的探索工具和记录方式。你可以扫描可疑方块、快速取出已经确认的战利品，并在考古笔记中整理发现过的物品、来源、获取条件和位置。
+Unsuspicious Block 围绕 Minecraft 考古扩展了全套探索与收集玩法：可疑解析仪与考古铲帮助你扫描并快速发掘战利品，考古笔记负责整理掉落表、估算概率与探索日志；此外还提供河流与下界淘洗、纹饰陶轮台复制、咕噜荆芥驱避植物，以及用于原位重生成结构的回溯粉。
 
 ## Supported Environments / 支持环境
 
-| Item / 项目 | Status / 支持情况 |
+| Item / 项目 | Support / 支持情况 |
 |---|---|
 | Minecraft | 1.21.1 |
-| Fabric | Fabric Loader 0.17.0+, Fabric API required |
+| Mod Version / 模组版本 | 1.6.0 |
+| Fabric | Fabric Loader 0.17.0+, Fabric API required / 需安装 Fabric API |
 | NeoForge | NeoForge 21.1.221+ |
 | Java | 21 |
-| Multiplayer / 多人游戏 | Required on both client and server / 客户端与服务端都需要安装本模组 |
+| Multiplayer / 多人游戏 | Required on both client and server / 客户端与服务端都需要安装 |
 | License | MIT |
 
 ## Links / 相关链接

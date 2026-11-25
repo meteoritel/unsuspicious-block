@@ -1,30 +1,29 @@
 # Specimen Box
 
-The Specimen Box is a five-slot portable container. It both stores items and lets certain items inside that normally require "being carried" or "being equipped" keep working.
+The Specimen Box is a **5-slot** portable container that lets carried utilities, Totems of Undying, and compatible artifacts keep working from inside the box.
 
 ## Obtaining
 
-Chests in village weaponsmith houses have a 30% chance to generate a Specimen Box.
+Chests in village **Weaponsmith** houses have a **30%** chance to contain a Specimen Box.
+
+## Basic Usage
+
+- Right-click the Specimen Box in hand to open its 5-slot inventory.
+- Hovering over a Specimen Box in your inventory displays a visual preview of the items stored inside.
+- A Specimen Box cannot be placed inside another Specimen Box.
 
 ## Carried Effects
 
-The Archaeology Journal, the Eye of Cat, and other items that support accessory slots keep their "carried" state while inside the Specimen Box. For example, after putting an Eye of Cat into the box, the enchanting table, anvil, and grindstone still benefit from the Eye of Cat's information abilities as long as the box stays in your inventory or an accessory slot.
+As long as the Specimen Box sits in your inventory, hotbar, or accessory slot (with Trinkets / Curios installed), items stored directly inside it remain active:
 
-## Using a Totem of Undying from the Box
+- **[Archaeology Journal](en-Archaeology-Journal)**: Pressing `C` still opens the journal or searches hovered inventory/JEI items.
+- **[Eye of Cat](en-Eye-of-Cat)**: Enchanting table, anvil, and grindstone reveals stay active.
+- **Artifacts**: With **Artifacts** installed, compatible artifacts stored inside keep their equipped effects.
 
-While the Specimen Box is in your inventory or an accessory slot, a Totem of Undying inside it can still save your life: at the moment of death, one totem is automatically consumed from the box, with exactly the same effect as holding a totem (1 HP retained, plus Regeneration, Absorption, and Fire Resistance).
+## Totem of Undying Proxy
 
-- A vanilla held totem still takes priority; the Specimen Box only steps in when no held totem triggers.
-- Only totems inside the box are consumed; loose totems in your inventory are unaffected.
+While carrying a Specimen Box in your inventory or accessory slot, a **Totem of Undying** stored inside it can automatically save you from fatal damage:
 
-## Accessory Slot Integration
-
-- Fabric uses Trinkets.
-- NeoForge uses Curios.
-- With Artifacts installed, compatible artifacts can keep their equipment effects while stored in the Specimen Box.
-
-These integrations are all optional; without them, the Specimen Box still works as an ordinary five-slot portable container.
-
-## Limitations
-
-A Specimen Box cannot be placed inside another Specimen Box.
+- **Priority**: A Totem held in your main hand or off-hand always triggers first; the Specimen Box only consumes one of its own totems if no held totem triggered.
+- **Effect**: Identical to a vanilla Totem of Undying (saves you at 1 HP, clears negative effects, and grants Regeneration, Absorption, and Fire Resistance).
+- Only totems inside the Specimen Box are consumed; loose totems elsewhere in your inventory are untouched.

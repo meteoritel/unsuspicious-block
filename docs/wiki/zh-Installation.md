@@ -1,36 +1,43 @@
 # 安装与运行环境
 
-> 适用于 Minecraft 1.21.1 和 Unsuspicious Block 1.5.2。
+> 适用于 Minecraft 1.21.1 和 Unsuspicious Block 1.6.0。
 
-## 必要条件
+## 运行条件
 
-- Minecraft 1.21.1
-- Java 21
-- Fabric Loader 0.17.0 及以上，或 NeoForge 21.1.221 及以上
-- Fabric 版本需要安装 Fabric API；NeoForge 版本没有额外的必需依赖
+- **Minecraft**：1.21.1
+- **Java**：21
+- **加载器**：Fabric Loader 0.17.0 及以上，或 NeoForge 21.1.221 及以上
+- **前置依赖**：Fabric 版本需要安装 Fabric API；NeoForge 版本没有其他必需模组（界面库 Meteo's UI Kit 已内嵌在双端安装包中，无需单独下载）
 
-## 单人游戏
+## 单人游戏安装
 
-1. 安装对应的 Fabric 或 NeoForge 启动器配置。
-2. 将与加载器匹配的 Unsuspicious Block `.jar` 放入 `mods` 文件夹。
-3. Fabric 用户同时放入 Fabric API。
-4. 启动 Minecraft 1.21.1，并在主菜单或模组列表中确认模组已加载。
+1. 安装对应的 Fabric 或 NeoForge 游戏版本。
+2. 将与加载器匹配的 Unsuspicious Block `.jar` 放入 `.minecraft/mods` 文件夹。
+3. Fabric 玩家同时放入对应版本的 Fabric API。
+4. 启动 Minecraft 1.21.1，在模组列表中确认模组已加载。
 
-## 多人游戏
+## 多人游戏说明
 
-客户端和服务端都必须安装本模组，并使用相同的 Minecraft、加载器和模组版本。只有客户端安装时，考古笔记的同步数据、扫描和发掘状态无法正常工作。
+客户端和服务端都需要安装相同版本的 Unsuspicious Block（`1.6.0`）。如果只有客户端安装，考古笔记同步、解析仪扫描、考古铲取物和淘洗点都无法正常工作。
 
-## 可选联动
+## 可选联动模组
 
-以下 Mod 不是运行本模组的必要条件：
+以下模组均为可选安装，未安装时不影响本模组主流程：
 
-- **JEI**：查看配方，并显示纹饰陶轮台的专用配方分类。
-- **REI / EMI**：可用于查看普通配方；本模组不强制依赖它们。
-- **Jade**：查看已经扫描出的可疑方块战利品。
-- **Trinkets**（Fabric）或 **Curios**（NeoForge）：为考古笔记、猫之瞳和标本箱提供饰品栏位置。
-- **Artifacts**：让放在标本箱中的兼容饰品继续生效。
-- **Lootr**：NeoForge 构建提供可选兼容。
+- **JEI**：查看全部配方、纹饰陶轮台专用分类以及未烧制陶罐/陶片的熔炉烧制配方；支持在考古笔记中按 `U` / `R` 查配方，或悬停物品按 `C` 跳转查询。
+- **REI / EMI**：可查看常规合成与熔炼配方。
+- **Jade**：显示你已扫描的可疑方块战利品、不可疑方块封存内容，以及淘洗点的类型、剩余次数和恢复/消失倒计时。
+- **Trinkets**（Fabric）或 **Curios**（NeoForge）：为考古笔记、标本箱和猫之瞳提供饰品槽位。
+- **Artifacts**：让放入标本箱中的兼容饰品继续生效。
+- **Mekanism**（NeoForge `10.7.19+`，已在 `10.7.19.85` 验证）：使用电力熔炼炉烧制未烧制陶片与陶罐，并保留原有纹饰。
+- **Create**（NeoForge `6.0.10`）：使用鼓风机批量烧制未烧制陶片与陶罐，并保留原有纹饰。
+- **Relics**：在开阔水域使用「泥底打捞」钓鱼时，极小概率额外捞出其饰品。
+- **Lootr**（仅 NeoForge）：兼容 Lootr 战利品容器与可疑方块。
 
-## 更新或更换加载器
+## 从旧版升级或更换加载器
 
-更换 Fabric 与 NeoForge 时，请保留世界备份。考古笔记的「世界规则」随存档保存在 `serverconfig/unsuspiciousblock-loot-tracking.json`；从旧版升级时先用原 Loader 打开世界以导入旧配置。全局配置和可选联动由各 Loader 管理。
+升级或切换 Fabric / NeoForge 前，建议先备份存档。
+
+- 从 `1.5.2` 或更早版本升级到 `1.6.0` 时，**客户端与服务端须一同升级**。
+- 考古笔记的世界战利品追踪规则现在由 Fabric 和 NeoForge 共用，保存在存档目录下的 `serverconfig/unsuspiciousblock-loot-tracking.json`。首次以 `1.6.0` 打开缺少该文件的旧存档时，会自动导入旧版的追踪规则与日志设置；因此如需从旧版切换加载器，请先用原加载器运行 `1.6.0` 打开一次存档完成导入。
+- 全局配置（如淘盘参数）与部分可选联动仍由各自加载器管理，详见[联动与设置](zh-Compatibility-and-Settings)。

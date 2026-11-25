@@ -1,73 +1,80 @@
 # Pottery Wheel
 
-The Decorated Pottery Wheel is used to craft unfired decorated pots and unfired decorated pottery sherds, and can also duplicate pottery sherds you already own. It supports both manual operation and hopper automation.
+The Decorated Pottery Wheel duplicates rare pottery sherds and molds custom four-sided unfired decorated pots, with an interactive preview and hopper automation.
 
 ## Crafting the Wheel
 
-Arrange these materials in a crafting table as shown to make 1 Decorated Pottery Wheel:
+Combine the following materials in a crafting table:
 
-- 2 pottery sherds
-- 1 log
-- 2 wooden fences
-- 2 wooden planks
-- 2 cobblestone
+- 2 pottery sherds (any type)
+- 1 log (any wood)
+- 2 wooden fences (any wood)
+- 2 wooden planks (any wood)
+- 2 cobblestone (or blackstone, cobbled deepslate, etc.)
 
 ![Crafting table recipe for the Decorated Pottery Wheel](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-pottery-wheel.png)
 
-You can use other kinds of wood and pottery sherds. Other materials used to craft stone tools, such as blackstone, can replace the cobblestone.
+## Interface and Basics
 
-## Interface and Inputs
+Right-click the wheel to open its 7-slot interface:
 
-Right-click the wheel to open its interface. It has seven slots:
+- **Top, Left, Right, Bottom slots**: Place pottery sherds or bricks as pattern templates.
+- **Clay slot**: Place clay blocks or clay balls.
+- **Water slot**: Place a vanilla water bottle (inserting one fills the wheel block's water basin).
+- **Output slot**: Collect finished unfired items.
 
-- Top, left, right, bottom: hold pottery sherds or bricks to choose the patterns
-- Clay: hold a clay block or clay balls
-- Water: hold a vanilla water bottle
-- Output: take the finished product
+Each cycle takes **8 seconds** (160 ticks). **Pattern sherds and bricks are never consumed**; each craft consumes clay and 1 water bottle, leaving an empty glass bottle.
 
-Each process takes 8 seconds. Sherds and bricks used as patterns are kept; each process consumes clay and one bottle of water, leaving an empty glass bottle.
+### 3D Preview & Zoom Lightbox
+
+The preview area on the right shows the resulting pot or sherd:
+
+- Drag across the preview to rotate a decorated pot and inspect all four sides.
+- **Click the preview** to open a zoomable, draggable lightbox for closer inspection; press `Esc` or click Close to return.
 
 ## Crafting Decorated Pots
 
-1. Put one sherd into each of the four pattern slots. Use a brick for any side you want to leave undecorated.
-2. Put 1 clay block or 4 clay balls into the clay slot, and 1 water bottle into the water slot.
-3. Take out 1 unfired decorated pot with patterns matching the four materials you placed.
+1. Place 1 sherd (or **brick** for a blank side) into each of the four pattern slots.
+2. Put **1 clay block** or **4 clay balls** in the clay slot and 1 water bottle in the water slot.
+3. Collect **1 Unfired Decorated Pot** carrying all four chosen patterns.
 
 ![Making an unfired decorated pot with clay, water, and four pottery sherds](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-unfired-pot.png)
 
-Smelt the unfired decorated pot in a furnace to turn it into a vanilla decorated pot.
-
-With Mekanism installed on NeoForge, the Energized Smelter can also fire decorated pots and pottery sherds. The finished pottery keeps the patterns on the unfired item.
-
-![Furnace recipe for an unfired decorated pot](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-pot-smelting.png)
-
 ## Duplicating Pottery Sherds
 
-Put the sherd you want to copy into any pattern slot and leave the other pattern slots empty. Add clay and 1 water bottle:
+Place the sherd you want to copy into any single pattern slot and **leave the other three pattern slots empty**, then add clay and a water bottle:
 
-- Consume 1 clay block to get 4 unfired sherds with the same pattern.
-- Consume 1 clay ball to get 1 unfired sherd with the same pattern.
+- **1 clay block** + 1 water bottle → **4 Unfired Decorated Pottery Sherds**
+- **1 clay ball** + 1 water bottle → **1 Unfired Decorated Pottery Sherd**
 
 ![Duplicating an Angler Pottery Sherd with a clay block](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-unfired-sherd.png)
 
-Smelt the unfired sherds in a furnace to get sherds with the copied pattern. The images use the Angler pattern; other patterns are copied and fired the same way. The original sherd is kept.
+## Firing Finished Pottery
+
+Smelt Unfired Decorated Pots or Unfired Decorated Pottery Sherds in a **Furnace** to turn them into finished vanilla pots or sherds with all patterns preserved.
+
+![Furnace recipe for an unfired decorated pot](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-pot-smelting.png)
 
 ![Smelting an unfired sherd into an Angler Pottery Sherd](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-sherd-smelting.png)
 
-## Hopper Automation
+- With **JEI** installed, both Pottery Wheel recipes and furnace firing recipes appear in JEI.
+- On **NeoForge** with **Mekanism** (`10.7.19+`), the **Energized Smelter** fires unfired pots and sherds while preserving patterns.
+- On **NeoForge** with **Create** (`6.0.10`), **Encased Fans** can bulk-smelt unfired pots and sherds while preserving patterns.
 
-Hoppers can insert or extract items from these directions:
+## Hopper Automation and Work Modes
 
-- Top: input clay and water bottles
-- Sides: input pottery sherds and other pattern materials
-- Bottom: output finished products and empty glass bottles
+### Hopper Sides
 
-Finished products first try to enter the hopper directly below; if the hopper cannot accept them, the items stay in the wheel's output slot.
+- **Top**: Inserts clay and vanilla water bottles
+- **Sides**: Inserts sherds, bricks, clay, and water bottles
+- **Bottom**: Extracts finished items and empty glass bottles
 
-## Work Modes
+Upon completion, finished outputs and empty bottles **try to enter a hopper directly underneath first**; otherwise outputs stay in the output slot and the empty bottle returns to the water slot (or drops if water bottles remain stacked).
 
-The mode button in the interface toggles between three states:
+### Work Status Button
 
-- Always work
-- Stop working
-- Work only when receiving a redstone signal
+Click the mode button at the top-left of the interface to cycle between:
+
+- **Enabled**: Runs whenever valid inputs are present
+- **Disabled**: Pauses processing
+- **Redstone Enabled**: Runs only while receiving a redstone signal

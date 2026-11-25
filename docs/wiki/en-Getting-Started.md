@@ -1,48 +1,49 @@
 # Getting Started
 
-This walkthrough takes you from entering a world for the first time to obtaining the Archaeology Journal, Suspicious Reader, and Archaeological Shovel, and then recording your own discoveries.
+This walkthrough covers crafting your core archaeology tools, finding Ancient Coins and Lost Pages, and trying out panning, pottery, and ancient plants.
 
 ## 1. Craft the Archaeology Journal
 
-Combine a book and a brush in a crafting table to make the [Archaeology Journal](en-Archaeology-Journal). Keep it in your inventory to use it; right-click the journal to open its interface, or press `C` (default) while carrying it.
+Combine **1 Book** and **1 Brush** in any crafting grid to make the [Archaeology Journal](en-Archaeology-Journal).
 
-## 2. Find Archaeology Sites
+- Right-click it in hand, or press `C` while carrying it in your inventory, accessory slot, or Specimen Box.
+- While hovering any item in your inventory or JEI, press `C` to jump directly to where it appears in the journal.
 
-Head to ruins that contain suspicious blocks and brush them with the vanilla brush. During archaeology you may find:
+## 2. Explore Ruins or Pan a River
 
-- **Ancient Coin**: 5% chance from the common archaeology loot pool of Trail Ruins.
-- **Lost Page**: 8% chance from the rare archaeology loot pool of Trail Ruins.
+Visit Desert Pyramids, Ocean Ruins, or Trail Ruins and brush suspicious blocks with a vanilla brush—or craft a [Copper Pan](en-Fishing-and-Panning) and hold right-click on sparkling **Shimmers** in river biomes.
 
-Discovering new loot sources and items unlocks catalog entries and updates your collection progress in the Archaeology Journal.
+As you explore, keep an eye out for two key resources:
 
-## 3. Craft the Two Tools
+- **Ancient Coin**: Trail Ruins common pool (5%), river panning, digging sand/gravel with the Archaeological Shovel (0.3%), or Fossil Hunter bonus drops.
+- **Lost Page**: Trail Ruins rare pool (8%), river panning, or Fossil Hunter bonus drops.
+
+Every brushed block, opened loot chest, catch, or pan unlocks entries and records coordinates in your Archaeology Journal.
+
+## 3. Craft Your Two Main Tools
 
 ### Archaeological Shovel
 
-The recipe requires 3 iron ingots, 1 copper ingot, and 1 stick. The [Archaeological Shovel](en-Reader-and-Shovel) is both an iron-tier shovel and the dedicated tool for fast excavation later on.
+Craft the [Archaeological Shovel](en-Reader-and-Shovel) from **3 iron ingots, 1 copper ingot, and 1 stick**. It mines at iron tier with 256 durability, digs up to 3 blocks downward in sand or gravel while avoiding suspicious blocks, and prevents accidentally breaking suspicious blocks unless you sneak.
 
 ### Suspicious Reader
 
-The recipe requires 2 Ancient Coins, 1 glass pane, 2 iron ingots, 1 ender pearl, 2 redstone dust, and 1 nether quartz. See [Suspicious Reader & Archaeological Shovel](en-Reader-and-Shovel) for the arrangement.
+Craft the [Suspicious Reader](en-Reader-and-Shovel) from **2 Ancient Coins, 1 glass pane, 2 iron ingots, 1 ender pearl, 2 redstone dust, and 1 nether quartz**.
 
-## Scanning and Excavating
+## 4. Scan First, Extract Instantly
 
-Right-click a suspicious block while holding the Suspicious Reader to inspect its loot first. Single-block scans are free; once confirmed, right-click the same block with the Archaeological Shovel to extract the loot directly, without waiting for the full brushing process.
+1. **Single-Block Scan (free)**: Right-click a suspicious block in default mode to inspect its loot on your HUD without spending energy.
+2. **Direct Extraction**: Right-click a block you have scanned using the **Archaeological Shovel** to take the item immediately. If you hold the Reader in your main hand and the Shovel in your off-hand, the first right-click scans and the second extracts automatically.
+3. **Ranged Scan**: Press `V` to switch scan range (`3×3×3`, `5×5×5`, `7×7×7`) and highlight nearby suspicious blocks and unopened loot containers. Press `H` to toggle the scan HUD panels.
+4. **Recharging**: Ranged scans spend energy and automatically consume Ancient Coins from your inventory when low; you can also sneak + right-click air to recharge manually (256 energy per coin).
 
-Once you have enough resources, press `V` to toggle ranged scanning to find suspicious blocks and unopened loot containers in an area.
+## 5. Forge Enchanted Books from Lost Pages
 
-## Enchantments from Lost Pages
+Place **3 Pitcher Plants** in a row on a crafting table to make **3 Base Pages**, then place **Base Page + Book + Lost Page** into a **Smithing Table** (left to right) to roll a random enchanted book. See [Lost Pages and Enchantments](en-Lost-Pages-and-Enchantments).
 
-Craft 3 Base Pages from 3 pitcher plants, then place 1 Base Page, 1 book, and 1 Lost Page into a smithing table from left to right. The result is a random enchanted book, which may contain this mod's enchantments, vanilla enchantments, or a combination of both. See [Lost Pages and Enchantments](en-Lost-Pages-and-Enchantments) for the recipes.
+## 6. Other Useful Mechanics
 
-## 4. Record and Collect
-
-The Archaeology Journal records discovered items, loot conditions, and locations. Use the Catalog to see what remains unlocked, use the Log to review completed exploration, and decide where to go next.
-
-## 5. Extras
-
-### Universal Repair Material
-Ancient Coins can repair any durability-bearing tool on an anvil without adding enchantment penalties.
-
-### Decorated Pottery Wheel
-Put a sherd, clay, and a water bottle into the [Pottery Wheel](en-Pottery-Wheel) to make unfired sherds, then smelt them into sherds with the same pattern. The original sherd is kept.
+- **Penalty-Free Anvil Repair**: Use an Ancient Coin in an anvil to restore **25% of any item's maximum durability** without increasing prior-work penalty, or trade 1 coin for 5 emeralds with Wandering Traders.
+- **Duplicate Pottery Sherds**: Place an existing sherd, clay, and a water bottle into the [Pottery Wheel](en-Pottery-Wheel) to mold unfired copies without consuming the original sherd.
+- **Carry Utilities in a Specimen Box**: Find a [Specimen Box](en-Specimen-Box) in village weaponsmith chests to store your [Eye of Cat](en-Eye-of-Cat), Archaeology Journal, or Totems of Undying while keeping their effects active.
+- **Grow Repellent Plants & Rewind Ruins**: Find [Purrmint](en-Purrmint) seeds from Sniffer digging (50% chance) to keep Creepers and Phantoms away from your base, or turn Torchflowers into [Spark Dust and Rewind Dust](en-Spark-and-Rewind-Dust) to regenerate looted structures in place.
