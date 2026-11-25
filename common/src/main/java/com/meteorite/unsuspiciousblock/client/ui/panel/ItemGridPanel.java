@@ -31,7 +31,6 @@ import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ProbabilityFormat;
@@ -788,9 +787,9 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         if (cell == null || cell.item() == null) return null;
         GridItem item = cell.item();
         if (!item.unlocked()) return new TooltipData(ItemStack.EMPTY, null, -1, null, List.of(), false,
-                LootConditionHandler.UncertaintyLevel.NONE, false, List.of(), List.of(), 0, null, null, null);
+                LootConditionHandler.UncertaintyLevel.NONE, false, List.of(), 0, null, null, null);
         return new TooltipData(stack, item.tooltipHint(), item.count(), item.probability(), item.acquisitionPaths(),
-                item.injected(), item.uncertaintyLevel(), true, item.scenarioProbabilities(), item.declaredChances(),
+                item.injected(), item.uncertaintyLevel(), true, item.declaredChances(),
                 item.simulationCount(), item.observedFunctions(), item.displayName(), item.signature());
     }
 
@@ -822,7 +821,7 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         if (recommendationBounds(cell).contains(mouseX, mouseY)) return List.of(
                 ScenarioSession.text("recommend.title"));
         return JournalTooltipBuilder.buildChildTable(child.displayName(), child.tableId(), child.probability(),
-                child.scenarioProbabilities(), child.conditions(), child.luckAffected());
+                child.conditions(), child.luckAffected());
     }
 
     private void rebuildTagGroups() {
@@ -904,13 +903,11 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
      */
     public record ChildTableEntry(ResourceLocation tableId, Component displayName, boolean unlocked,
                                   Probability probability,
-                                  List<ScenarioProbability> scenarioProbabilities,
                                   List<LootConditionInfo> conditions,
                                   List<ItemStack> previewItems,
                                   boolean luckAffected,
                                   int simulationCount) implements GridContent {
         public ChildTableEntry {
-            scenarioProbabilities = List.copyOf(scenarioProbabilities);
             conditions = List.copyOf(conditions);
             previewItems = List.copyOf(previewItems);
         }
@@ -928,7 +925,6 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                               boolean injected,
                               LootConditionHandler.UncertaintyLevel uncertaintyLevel,
                               boolean discovered,
-                              List<ScenarioProbability> scenarioProbabilities,
                               List<DeclaredChance> declaredChances,
                               int simulationCount,
                               @Nullable FunctionObservationSummary observedFunctions,
@@ -943,7 +939,6 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                            List<LootAcquisitionPath> acquisitionPaths,
                            boolean injected,
                            LootConditionHandler.UncertaintyLevel uncertaintyLevel,
-                           List<ScenarioProbability> scenarioProbabilities,
                            List<DeclaredChance> declaredChances,
                            int simulationCount,
                            @Nullable FunctionObservationSummary observedFunctions) implements GridContent {

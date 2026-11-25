@@ -696,7 +696,6 @@ public class JournalViewModel {
                         child.id(), child.displayName(), !discoveredItems.isEmpty(),
                         // 子表入口与物品同口径：读服务端派生的当前输入状态，不再取跨场景最大值
                         childProbability.probability(),
-                        childProbability.scenarioProbabilities(),
                         // 入口条件由服务端派生（路径共同条件 + 注入边门槛）：注入边不在任何 JSON 里，
                         // 客户端从物品路径本地重推必然漏掉它，泥地打捞入口就曾因此没有原因可讲
                         childProbability.conditions(), previewItems,
@@ -776,7 +775,7 @@ public class JournalViewModel {
         // 取最大值等于把"你站在沼泽里"那个数当作你的处境展示（D1）。
         return new ItemGridPanel.GridItem(item.id(), item.displayName(), item.tooltipHint(),
                 item.probability(), item.unlocked(), item.count(), item.signature(), highlighted,
-                directPaths, item.injected(), level, item.scenarioProbabilities(),
+                directPaths, item.injected(), level,
                 DeclaredChance.fromPaths(directPaths), simulationCount, item.observedFunctions());
     }
 

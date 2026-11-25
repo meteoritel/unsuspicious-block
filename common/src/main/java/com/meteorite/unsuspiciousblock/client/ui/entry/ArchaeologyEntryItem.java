@@ -1,7 +1,6 @@
 package com.meteorite.unsuspiciousblock.client.ui.entry;
 
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
@@ -28,7 +27,6 @@ public record ArchaeologyEntryItem(
         LootResultSignature signature,
         List<LootAcquisitionPath> acquisitionPaths,
         boolean injected,
-        List<ScenarioProbability> scenarioProbabilities,
         LootConditionHandler.UncertaintyLevel uncertaintyLevel,
         @Nullable FunctionObservationSummary observedFunctions
 ) implements ItemEntryLike {

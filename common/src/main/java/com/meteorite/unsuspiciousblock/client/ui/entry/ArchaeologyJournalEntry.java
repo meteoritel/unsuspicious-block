@@ -68,8 +68,7 @@ public record ArchaeologyJournalEntry(
             items.add(new ArchaeologyEntryItem(itemDefinition.id(), itemDefinition.displayName(),
                     itemDefinition.tooltipHint(), itemDefinition.probability(), unlocked, count,
                     itemDefinition.signature(), directPaths,
-                    itemDefinition.injected(), itemDefinition.scenarioProbabilities(),
-                    itemDefinition.uncertaintyLevel(), itemDefinition.observedFunctions()));
+                    itemDefinition.injected(), itemDefinition.uncertaintyLevel(), itemDefinition.observedFunctions()));
         }
         boolean tableUnlocked = progress != null && progress.isUnlocked();
         boolean favorite = JournalUiPreferencesStore.isFavorite(tableId);

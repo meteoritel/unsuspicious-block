@@ -504,8 +504,6 @@
   "screen.unsuspiciousblock.archaeology_journal.undiscovered": "未发现",
   "screen.unsuspiciousblock.archaeology_journal.pending_analysis": "待解析",
   "screen.unsuspiciousblock.archaeology_journal.probability": "概率：%s",
-  "screen.unsuspiciousblock.archaeology_journal.probability_minimum": "其它场景最低：%s",
-  "screen.unsuspiciousblock.archaeology_journal.probability_maximum": "其它场景最高：%s",
   "screen.unsuspiciousblock.archaeology_journal.acquired": "累计获得：%d",
   "screen.unsuspiciousblock.archaeology_journal.from_child_table": "来自：%s",
   "screen.unsuspiciousblock.archaeology_journal.from_item_tag": "来自标签：%s",

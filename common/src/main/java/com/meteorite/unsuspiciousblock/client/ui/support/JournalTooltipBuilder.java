@@ -8,7 +8,6 @@ import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionPresentation;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ScenarioProbability;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.UnknownReason;
@@ -43,10 +42,6 @@ public final class JournalTooltipBuilder {
 
     // 数值格式化集中在 ProbabilityFormat，tooltip 仅负责标签和顺序。
     private static final String KEY_PROBABILITY = "screen.unsuspiciousblock.archaeology_journal.probability";
-    private static final String KEY_PROBABILITY_MIN =
-            "screen.unsuspiciousblock.archaeology_journal.probability_minimum";
-    private static final String KEY_PROBABILITY_MAX =
-            "screen.unsuspiciousblock.archaeology_journal.probability_maximum";
 
     private JournalTooltipBuilder() {
     }
@@ -207,34 +202,18 @@ public final class JournalTooltipBuilder {
         return true;
     }
 
-    // 子表入口沿用物品的概率摘要，并列出进入该子表的公共条件。
+    /**
+     * 构建子表入口提示，展示当前场景的入口概率和服务端派生的公共条件。
+     */
     public static List<Component> buildChildTable(Component displayName, ResourceLocation tableId,
                                                    Probability probability,
-                                                   List<ScenarioProbability> scenarioProbabilities,
                                                    List<LootConditionInfo> conditions,
                                                    boolean luckAffected) {
         List<Component> lines = new ArrayList<>();
         lines.add(displayName.copy().withStyle(TooltipBuilder.BODY));
         lines.add(Component.literal(tableId.toString()).withStyle(TooltipBuilder.HINT));
-        // 显示优先级与物品同一条链：**状态词优先于数值**。子表区间是"其它代表场景的范围"，
-        // 用它顶掉「需要条件」就等于"为什么看不到数字"永远看不到；而且区间里的 0% 会与
-        // 「需要条件」互相打脸（0% 读起来像"不可能"，而它只是"当前输入下进不去"）。
-        if (!probability.isDisplayable()) {
-            lines.add(ProbabilityFormat.formatComponent(probability).copy().withStyle(TooltipBuilder.LABEL));
-        } else {
-            ProbabilityBounds bounds = scenarioProbabilityBounds(scenarioProbabilities);
-            if (bounds != null && !bounds.minimum().equals(bounds.maximum())) {
-                lines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.probability_minimum", bounds.minimum())
-                        .withStyle(TooltipBuilder.POSITIVE));
-                lines.add(Component.translatable(
-                        "screen.unsuspiciousblock.archaeology_journal.probability_maximum", bounds.maximum())
-                        .withStyle(TooltipBuilder.POSITIVE));
-            } else {
-                lines.add(ProbabilityFormat.formatComponent(probability).copy().withStyle(
-                        probability.isDisplayable() ? TooltipBuilder.POSITIVE : TooltipBuilder.LABEL));
-            }
-        }
+        lines.add(ProbabilityFormat.formatComponent(probability).copy().withStyle(
+                probability.isDisplayable() ? TooltipBuilder.POSITIVE : TooltipBuilder.LABEL));
         if (luckAffected) {
             appendLuckNote(lines);
         }
@@ -257,7 +236,7 @@ public final class JournalTooltipBuilder {
      *   <li>「需要条件」：说明引用了哪些可调整的旋钮与条件——**只是陈述**，不承诺调完就能拿到；</li>
      *   <li>未知：按 {@code UnknownReason} 分述"为什么是问号"；</li>
      *   <li>零命中：报本次抽样次数并提示可提高次数，不写概率上界；</li>
-     *   <li>已测量 / 静态不可达：给数值，并附其它代表场景的区间。</li>
+     *   <li>已测量 / 静态不可达：显示当前场景的数值。</li>
      * </ul>
      */
     private static void appendProbabilityLines(List<Component> lines, ItemGridPanel.TooltipData data) {
@@ -279,14 +258,13 @@ public final class JournalTooltipBuilder {
             }
             case Probability.Unknown(UnknownReason reason) -> lines.add(
                     ProbabilityFormat.describeUnknown(reason).copy().withStyle(TooltipBuilder.LABEL));
-            case Probability.Measured measured -> appendNumericProbabilityLines(lines, data, measured);
-            case Probability.Unreachable unreachable -> appendNumericProbabilityLines(lines, data, unreachable);
+            case Probability.Measured measured -> appendNumericProbability(lines, data, measured);
+            case Probability.Unreachable unreachable -> appendNumericProbability(lines, data, unreachable);
         }
     }
 
-    // 已测量 / 静态不可达：先给出数值，再附其它代表场景的区间
-    private static void appendNumericProbabilityLines(List<Component> lines, ItemGridPanel.TooltipData data,
-                                                      Probability probability) {
+    private static void appendNumericProbability(List<Component> lines, ItemGridPanel.TooltipData data,
+                                                 Probability probability) {
         if (probability.isZeroHit()) {
             lines.add(ProbabilityFormat.describeZeroHit(data.simulationCount())
                     .copy().withStyle(TooltipBuilder.LABEL));
@@ -305,14 +283,6 @@ public final class JournalTooltipBuilder {
         // 以及下方的条件区、生成规则区表达。旧文案里"条件概率"会被误读成统计意义上的条件概率。
         lines.add(Component.translatable(KEY_PROBABILITY, ProbabilityFormat.formatComponent(probability))
                 .copy().withStyle(probColor));
-        ProbabilityBounds bounds = scenarioProbabilityBounds(data.scenarioProbabilities());
-        if (bounds != null && !bounds.minimum().equals(bounds.maximum())) {
-            // 网格给的是当前输入下的值，这里的区间是**其它代表场景**的范围，两者并列但不互相冒充
-            lines.add(Component.translatable(KEY_PROBABILITY_MIN, bounds.minimum())
-                    .copy().withStyle(probColor));
-            lines.add(Component.translatable(KEY_PROBABILITY_MAX, bounds.maximum())
-                    .copy().withStyle(probColor));
-        }
     }
 
     // 说明该路径受幸运影响；**不再**写死一个幸运数值——幸运自 P1 起是输入的一维（基准值为 0），
@@ -321,29 +291,6 @@ public final class JournalTooltipBuilder {
         lines.add(Component.translatable(
                 "screen.unsuspiciousblock.archaeology_journal.probability_luck_dependent")
                 .withStyle(TooltipBuilder.HINT));
-    }
-
-    // 只聚合已测量/静态不可达的代表场景；未知、需要条件与零命中不参与区间——它们不是数值。
-    private static ProbabilityBounds scenarioProbabilityBounds(List<ScenarioProbability> probabilities) {
-        Probability minimum = null;
-        Probability maximum = null;
-        for (ScenarioProbability scenario : probabilities) {
-            Probability value = scenario.probability();
-            if (!value.isDisplayable()) continue;
-            if (minimum == null || value.lowerBound() < minimum.lowerBound()) {
-                minimum = value;
-            }
-            if (maximum == null || value.upperBound() > maximum.upperBound()) {
-                maximum = value;
-            }
-        }
-        return minimum == null
-                ? null
-                : new ProbabilityBounds(
-                ProbabilityFormat.formatNumeric(minimum), ProbabilityFormat.formatNumeric(maximum));
-    }
-
-    private record ProbabilityBounds(String minimum, String maximum) {
     }
 
     private static void appendAcquisitionPaths(List<Component> lines, List<LootAcquisitionPath> paths) {

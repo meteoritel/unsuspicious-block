@@ -7,7 +7,7 @@
 
 ### 1.1 概率展示派生 (`PathHintAnalyzer.deriveDisplay`)
 
-服务端为每个条目的当前输入派生四态 `Probability`（以及同口径的子表入口展示状态 `deriveEntryDisplay`）：
+服务端为物品和子表入口分别派生当前场景的四态 `Probability`。网格和悬停 Tooltip 均读取该场景的结果。
 
 | 判定条件 | 派生状态 | 网格显示 | Tooltip 行为 |
 |---|---|---|---|
@@ -18,7 +18,7 @@
 | 条目在所有代表场景下均不可用（如受 32 场景截断） | `Unknown(UNCOVERED)` | `?` | 明确说明场景未被覆盖 |
 
 - **声明触发率与模拟掉落率分开**：`random_chance` 节点将常量或常量区间写入 `DeclaredChance`。网格固定采用优先级链：`可适用性状态（NeedsCondition / 未知） → 可展示时的声明触发率 → 模拟值`。多个 `random_chance` 节点各自独立展示，不做相乘、并集或求补运算。
-- **跨场景引用严格绑定参数**：`scenarioProbabilities` 仅在同组 `ScenarioParams` 存在测量缓存时下发对应场景引用；代表场景最小/最大值范围仅供对照，不代表数学全空间极值。
+- **跨场景引用严格绑定参数**：`scenarioProbabilities` 仅在同组 `ScenarioParams` 存在测量缓存时下发对应场景引用。
 
 ### 1.2 条件保真度与函数树呈现
 
