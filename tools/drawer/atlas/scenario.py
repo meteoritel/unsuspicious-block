@@ -7,6 +7,7 @@ if __package__ in (None, ''):
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from atlas.book_chrome import _paint_pill_card
 from atlas.palette import UI_PALETTE, IconSpec, place_zone1_icons, run_source_preview
 from drawlib import AtlasBuilder, PixelCanvas, flip_y_ascii
 
@@ -264,5 +265,14 @@ def apply(atlas: AtlasBuilder) -> None:
         '....I.....',
         '...II.....',
     ), UI_PALETTE, expected_size=(10, 10))
+    # —— 场景页分组标题圆角胶囊 9-slice（与 STAT_PILL 同款 radius=3 圆角） ——
+    atlas.paint(
+        'SECTION_PILL_AVAILABLE', 32, 96, 12, 12,
+        lambda c: _paint_pill_card(c, border='#8BA56C', fill='#EBF2DC', highlight='#F8FCF0', shadow='#D5E1BF'),
+    )
+    atlas.paint(
+        'SECTION_PILL_BLOCKED', 44, 96, 12, 12,
+        lambda c: _paint_pill_card(c, border='#C68C73', fill='#F7E7DE', highlight='#FFF8F4', shadow='#E5C8B9'),
+    )
 if __name__ == '__main__':
     raise SystemExit(run_source_preview('scenario', apply, bg='#F3E7C8'))

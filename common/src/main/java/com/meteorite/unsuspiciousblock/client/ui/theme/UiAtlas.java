@@ -206,6 +206,18 @@ public final class UiAtlas {
             TEXTURE, 164, 64, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
 
     /**
+     * 场景页「当前可获得」分组圆角胶囊底板（9-slice，12×12，corner=3）。
+     */
+    public static final UiNineSlice SECTION_PILL_AVAILABLE = new UiNineSlice(
+            TEXTURE, 32, 96, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+    /**
+     * 场景页「需调整条件」分组圆角胶囊底板（9-slice，12×12，corner=3）。
+     */
+    public static final UiNineSlice SECTION_PILL_BLOCKED = new UiNineSlice(
+            TEXTURE, 44, 96, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+    /**
      * 拟物内凹物品插槽底框（9-slice，12×12，corner=2）。
      */
     public static final UiNineSlice SLOT_INSET = new UiNineSlice(

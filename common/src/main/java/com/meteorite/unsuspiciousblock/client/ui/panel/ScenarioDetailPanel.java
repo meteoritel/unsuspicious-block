@@ -15,6 +15,7 @@ import com.meteorite.meteosuikit.api.input.UiPointer;
 import com.meteorite.meteosuikit.api.input.UiPointerHit;
 import com.meteorite.meteosuikit.api.layout.UiNode;
 import com.meteorite.meteosuikit.api.render.UiIcon;
+import com.meteorite.meteosuikit.api.render.UiNineSlice;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
@@ -24,7 +25,6 @@ import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground.BookLayou
 import com.meteorite.unsuspiciousblock.client.ui.layout.LayoutAware;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
-import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
@@ -222,12 +222,12 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
 
         SimulationOptions options = snapshot == null ? null : snapshot.structure().options();
         if (snapshot == null || options == null) {
-            layoutHeader(false);
+            layoutPanel(false, conditionView);
             configureUnavailable(font, conditionView);
         } else {
             boolean showEnchantments = !options.enchantments().isEmpty()
                     || !snapshot.choice().params().toolEnchantments().isEmpty();
-            layoutHeader(showEnchantments);
+            layoutPanel(showEnchantments, conditionView);
             configureAvailable(font, conditionView, snapshot, options, showEnchantments);
         }
         if (nextViewKey != null) {
@@ -254,7 +254,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         return view;
     }
 
-    private void layoutHeader(boolean showEnchantments) {
+    private void layoutPanel(boolean showEnchantments, UiDocumentView conditionView) {
         int x = layout.rightPageX() + 4;
         int y = layout.rightPageY();
         int width = layout.rightPageWidth() - 8;
@@ -275,6 +275,13 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
             luck.setBounds(x + 21, headerY + 1, readoutAreaWidth, 16);
             enchantments.setBounds(0, 0, 0, 0);
         }
+        probeButton.setBounds(actionX, headerY + 1, iconSize, iconSize);
+        paramsButton.setBounds(actionX + iconSize + iconGap, headerY + 1, iconSize, iconSize);
+        expandButton.setBounds(actionX + (iconSize + iconGap) * 2, headerY + 1, iconSize, iconSize);
+        calculateButton.setBounds(x, y + 23, width, 16);
+        int panelTop = y + 43;
+        int contentHeight = Math.max(1, layout.rightPageBottom() - 8 - panelTop);
+        conditionView.setBounds(x + 6, panelTop + 6, Math.max(0, width - 12), Math.max(0, contentHeight - 12));
     }
 
     private void configureUnavailable(Font font, UiDocumentView conditionView) {
@@ -302,7 +309,7 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
                 () -> JournalClientConnection.scenario().clearNotes(),
                 () -> JournalClientConnection.scenario().select(currentTable, List.of(), params),
                 conditionId -> JournalClientConnection.scenario().toggleCondition(currentTable, conditionId),
-                target -> ScenarioRecommendationOverlay.open(overlays, currentTable, target), locateTarget);
+                locateTarget);
         conditionView.setContent(conditionTree);
 
         ResourceLocation toolId = params.toolId();
@@ -394,9 +401,17 @@ public final class ScenarioDetailPanel implements PagePanel, LayoutAware, UiInpu
         UiRect rect = target.contentBounds();
         Object payload = target.hit().payload();
         if (payload instanceof ScenarioPageBuilder.Heading heading) {
-            boolean isSection = heading == ScenarioPageBuilder.Heading.SECTION;
-            if (isSection) {
-                ScenarioAtlas.SECTION.render(graphics, rect);
+            UiNineSlice pill = switch (heading) {
+                case SECTION_NEUTRAL -> UiAtlas.STAT_PILL;
+                case SECTION_AVAILABLE -> UiAtlas.SECTION_PILL_AVAILABLE;
+                case SECTION_BLOCKED -> UiAtlas.SECTION_PILL_BLOCKED;
+                case SECTION_UNCERTAIN -> UiAtlas.STAT_PILL_SUBTLE;
+                case ENTRY -> null;
+            };
+            if (pill != null) {
+                int expandLeft = Math.min(2, rect.x());
+                pill.render(graphics, new UiRect(rect.x() - expandLeft, rect.y(),
+                        rect.width() + expandLeft + 2, rect.height()));
             }
         } else if (payload instanceof ScenarioBranch) {
             // 为条件树中的候选掉落物与子表图标绘制内凹物品插槽框

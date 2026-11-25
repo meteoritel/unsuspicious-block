@@ -105,6 +105,7 @@
   - 铜金强调按钮（`ACCENT_BUTTON_SKIN`，`corner = 2`）：`(104..140, 64)` 四态（Normal / Hover / Pressed / Disabled）。
   - 通用圆角指标药丸（`STAT_PILL`，`corner = 3`）：`(152, 64, 12, 12)`。
   - 轻量浅底圆角卡片（`STAT_PILL_SUBTLE`，`corner = 3`）：`(164, 64, 12, 12)`。
+  - 场景页语义分组圆角胶囊（`SECTION_PILL_AVAILABLE` / `SECTION_PILL_BLOCKED`，`corner = 3`）：`(32 / 44, 96, 12, 12)`，分别对应「当前可获得」浅森绿与「需调整条件」浅暖赭红胶囊底板。
   - 拟物内凹物品插槽（`SLOT_INSET` / `SLOT_INSET_HOVER`，`corner = 2`）：`(176 / 188, 64, 12, 12)`。
   - 轻量内嵌按钮（`QUIET_BUTTON_SKIN`，`corner = 2`）：常态 `(104, 76)` 衔接羊皮纸悬停/按压态，供场景下拉标题与 `CopyCoordinateButton` 使用。
   - 欢迎页圆角分类卡片（`CATEGORY_CARD_NORMAL` / `HOVER` / `SELECTED`，`corner = 3`）：`(116 / 128 / 140, 76, 12, 12)`。
