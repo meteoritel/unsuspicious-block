@@ -104,7 +104,9 @@ EnchantmentManager.registerValueEffect(BRUSH_ITEM_DROP, PRECISION_EXCAVATION, ne
 泥底打捞**不通过效果框架触发**，而是在钓鱼抽取时通过自定义条件 [`ToolEnchantmentCondition`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/core/loottable/condition/ToolEnchantmentCondition.java) 注入额外掉落（底层机制见[战利品表系统](loottable.md)的「自定义条件」一节）：
 
 - **单一入口声明**：Fabric 的 `FishingLootInjection` 与 NeoForge 的 `FishingLootModifier` 共用 `RuntimeLootLinks.MUD_DREDGING_GATE`（绑定附魔、最低等级 `1` 及概率曲线 `0.2 + 0.1/级`），GLM 数据仅保留 `loot_table_id` 过滤，确保玩法逻辑与笔记展示严格同源。
-- **哈希与分支职责**：`injectionGateEnchantments` 记录在发起注入的父表上，确保修改附魔 `max_level` 时关联父表缓存自动失效；开放水域与沼泽群系分支条件（`entity_properties` 与 `#c:is_swamp`）保留在子表 `gameplay/fishing/mud_dredging` 的条目上，因此展示为「需要条件」。
+- **表与群系分支**：`mud_dredging` 主表 Pool 1 在非开阔水域仅产出五种基础沉积物（`weight: 1`×5），开阔水域按沼泽条件互斥进入 `common` 或 `swamp` 子表（`weight: 10`）；Pool 2 在开阔水域以 `2%` 概率尝试展开可选标签 `unsuspiciousblock:mud_dredging_relics`（包装 `#relics:relic`，未安装 Relics 模组时静默为空）。`common` 表区分通用船货、内陆淡水与海洋/海岸遗物，`swamp` 表提供精简女巫湿货、粘液球与古旧金斧/单张唱片等；`ancient_coin` 与 `lost_page` 均不在泥底打捞产出。群系条件与候选留在数据表，不在 Loader 注入代码中分支。
+- **哈希和入口条件**：`injectionGateEnchantments` 记录在发起注入的父表上，确保修改附魔 `max_level` 时关联父表缓存自动失效；附魔概率由 `RuntimeLootLinks.MUD_DREDGING_GATE` 同时提供给 Fabric、NeoForge 与笔记投影。
+- **沉船木桶**：仅在 `#minecraft:is_ocean` 与 `#minecraft:is_beach` 群系可打捞出木桶物品，各自经 `set_loot_table` 对等绑定 Minecraft 1.21.1 的 `chests/shipwreck_map` 或 `chests/shipwreck_treasure`，开桶时生成完整原版箱子战利品。
 - **时序前提**：`ToolEnchantmentCondition` 类型必须在 `UnsuspiciousBlockCommon.init()` 之前注册完成（见[架构总览](../foundation/architecture.md)）。
 
 ## 7. 失落书页锻造 (`EnchantedBookRoller`)

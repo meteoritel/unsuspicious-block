@@ -2,32 +2,60 @@
   "type": "minecraft:fishing",
   "pools": [
     {
-      "rolls": 1,
+      "rolls": 1.0,
+      "bonus_rolls": 0.0,
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "minecraft:clay_ball"
+          "name": "minecraft:clay_ball",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 1.0,
+                "max": 2.0
+              },
+              "add": false
+            }
+          ]
         },
         {
           "type": "minecraft:item",
-          "name": "minecraft:mud"
+          "name": "minecraft:mud",
+          "weight": 1
         },
         {
           "type": "minecraft:item",
-          "name": "minecraft:glass_bottle"
+          "name": "minecraft:glass_bottle",
+          "weight": 1
         },
         {
           "type": "minecraft:item",
-          "name": "minecraft:bone_meal"
+          "name": "minecraft:bone_meal",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "type": "minecraft:uniform",
+                "min": 1.0,
+                "max": 2.0
+              },
+              "add": false
+            }
+          ]
         },
         {
           "type": "minecraft:item",
-          "name": "minecraft:lily_pad"
+          "name": "minecraft:lily_pad",
+          "weight": 1
         },
         {
           "type": "minecraft:loot_table",
           "value": "unsuspiciousblock:gameplay/fishing/mud_dredging/common",
-          "weight": 4,
+          "weight": 10,
           "conditions": [
             {
               "condition": "minecraft:entity_properties",
@@ -38,13 +66,22 @@
                   "in_open_water": true
                 }
               }
+            },
+            {
+              "condition": "minecraft:inverted",
+              "term": {
+                "condition": "minecraft:location_check",
+                "predicate": {
+                  "biomes": "#c:is_swamp"
+                }
+              }
             }
           ]
         },
         {
           "type": "minecraft:loot_table",
           "value": "unsuspiciousblock:gameplay/fishing/mud_dredging/swamp",
-          "weight": 6,
+          "weight": 10,
           "conditions": [
             {
               "condition": "minecraft:entity_properties",
@@ -65,6 +102,35 @@
           ]
         }
       ]
+    },
+    {
+      "rolls": 1.0,
+      "bonus_rolls": 0.0,
+      "conditions": [
+        {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "type_specific": {
+              "type": "minecraft:fishing_hook",
+              "in_open_water": true
+            }
+          }
+        },
+        {
+          "condition": "minecraft:random_chance",
+          "chance": 0.02
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:tag",
+          "name": "unsuspiciousblock:mud_dredging_relics",
+          "expand": true,
+          "weight": 1
+        }
+      ]
     }
-  ]
+  ],
+  "random_sequence": "unsuspiciousblock:gameplay/fishing/mud_dredging"
 }
