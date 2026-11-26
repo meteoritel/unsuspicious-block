@@ -41,6 +41,7 @@
 ## 相关链接
 
 - [CurseForge](https://www.curseforge.com/minecraft/mc-mods/unsuspicious-block)
+- [Modrinth](https://modrinth.com/mod/unsuspicious-block)
 - [源代码](https://github.com/meteoritel/unsuspicious-block)
-- [Meteo's UI Kit](https://github.com/meteoritel/meteo-s-ui-kit)
+- [内置UI库源码](https://github.com/meteoritel/meteo-s-ui-kit)
 - [问题反馈](https://github.com/meteoritel/unsuspicious-block/issues)
