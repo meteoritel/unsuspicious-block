@@ -15,7 +15,6 @@
 | Loader | Fabric 0.17.0+ / NeoForge 21.1.221+ |
 | Java | 21 |
 | Multiplayer | Required on both client and server |
-| License | [MIT](LICENSE.txt) |
 
 - **Fabric**: Requires [Fabric API](https://modrinth.com/mod/fabric-api).
 - **NeoForge**: No additional required mods.
@@ -31,6 +30,13 @@
 - **[Player Wiki](https://github.com/meteoritel/unsuspicious-block/wiki/en-Home)**: Installation, getting started, detailed feature guides, compatibility, and FAQ (source files in [docs/wiki/en-Home.md](docs/wiki/en-Home.md)).
 - **[Developer Docs](docs/dev/README.md)**: Multi-loader architecture, subsystem docs, and build workflows for contributors and modders.
 - **[Changelog](CHANGELOG.md)**: Release notes and version history.
+
+## Licensing
+
+- **Source code** is licensed under MIT. [License text](LICENSE.txt)
+- **Original textures** and original texture artwork in `texture_files/` are licensed under CC BY 4.0 (Creative Commons Attribution 4.0 International). [Scope and full license text](common/src/main/resources/assets/unsuspiciousblock/textures/LICENSE-CC-BY-4.0.txt)
+
+You can share and adapt these textures, including for commercial use. When redistributing them, credit `meteoritel`, retain the copyright and license notices, link to the source and license, and indicate any changes. [Texture source](https://github.com/meteoritel/unsuspicious-block) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 
 ## Links
 

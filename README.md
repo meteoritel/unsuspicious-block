@@ -15,7 +15,6 @@
 | 加载器 | Fabric 0.17.0+ / NeoForge 21.1.221+ |
 | Java | 21 |
 | 多人游戏 | 客户端与服务端均需安装 |
-| License | [MIT](LICENSE.txt) |
 
 - **Fabric**：需要额外安装 [Fabric API](https://modrinth.com/mod/fabric-api)。
 - **NeoForge**：无额外必需依赖。
@@ -31,6 +30,13 @@
 - **[玩家 Wiki](https://github.com/meteoritel/unsuspicious-block/wiki/zh-Home)**：安装说明、快速上手、各系统玩法详解、联动与常见问题（仓库内源文件见 [docs/wiki/zh-Home.md](docs/wiki/zh-Home.md)）。
 - **[开发者文档](docs/dev/README.md)**：多平台架构、子系统设计、开发与构建流程，面向二次开发与代码贡献者。
 - **[更新日志](CHANGELOG.md)**：各版本新增特性、调整与修复记录。
+
+## 许可协议
+
+- **源代码**采用 MIT 许可。[许可全文](LICENSE.txt)
+- **原创纹理**及 `texture_files/` 中的原创纹理源稿采用 CC BY 4.0 许可。[适用范围与许可全文](common/src/main/resources/assets/unsuspiciousblock/textures/LICENSE-CC-BY-4.0.txt)
+
+你可以分享、改编这些纹理，也可以用于商业用途。分发时请保留原版权和许可声明，附上来源与许可链接，并标明改动。[纹理来源](https://github.com/meteoritel/unsuspicious-block) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 
 ## 相关链接
 
