@@ -48,12 +48,12 @@ import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationScena
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationScenarioPlanner;
 import com.meteorite.unsuspiciousblock.core.loottable.source.LootTableSourceSnapshot;
 import com.meteorite.unsuspiciousblock.core.network.journal.CatalogSimulationDelivery;
+import com.meteorite.unsuspiciousblock.core.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.core.world.LootProbabilityData;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
-import net.minecraft.network.chat.Component;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -164,7 +164,7 @@ public final class ArchaeologyJournalServerCatalog {
         rebuildFailed = false;
         retireSimulations(server);
         enqueueSimulation(server, generation, buildResult.uncachedRequests());
-        CatalogSimulationDelivery.broadcastHash(server, generation.generation());
+        JournalCatalogHandler.broadcast(server, generation.generation());
         return true;
     }
 
@@ -510,7 +510,7 @@ public final class ArchaeologyJournalServerCatalog {
             // 工作线程未启动（异常情况）：回退到主线程同步模拟，避免功能缺失
             LOGGER.warn("模拟工作线程未启动，回退到主线程同步模拟 {} 个基准输入", uncached.size());
             simulateSynchronously(server, uncached);
-            CatalogSimulationDelivery.broadcastHash(server, generationId);
+            JournalCatalogHandler.broadcast(server, generationId);
             return;
         }
 
@@ -802,18 +802,7 @@ public final class ArchaeologyJournalServerCatalog {
         return new ScenarioResult(generation.generation(), generation.tableHash(tableId), input.key(), generation.project(derived));
     }
 
-    /**
-     * 当前代次排空后可广播的目录摘要，旧代事件返回空串。
-     */
-    public static String catalogHashFor(long generationId) {
-        CatalogGeneration generation = currentGeneration();
-        return generation == null || generation.generation() != generationId ? "" : generation.catalogHash();
-    }
 
-    // 计算整个目录内容的 SHA-256 哈希（用于按需同步比对）；缓存与失效都在当代内完成
-    public static String computeCatalogHash() {
-        return readSnapshot().hash();
-    }
 
     /**
      * 释放当代目录并标记为未加载；下次 ensureLoaded 会重新构建（含资源快照与投影一并释放）

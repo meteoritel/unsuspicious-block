@@ -10,6 +10,9 @@ import com.meteorite.meteosuikit.api.style.UiThemeContext;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateJournalLogNotePayload;
 import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
+import com.meteorite.unsuspiciousblock.core.journal.state.JournalLogMutation;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalLogEditResultPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -22,7 +25,8 @@ import java.util.UUID;
 
 /** 日志备注草稿由稳定的 kit 编辑器持有，明确保存后才发送更新请求。 */
 public final class JournalLogNoteEditScreen extends UiThemedScreen {
-    private static final int NOTE_MAX_LENGTH = 500;
+    private static final int NOTE_MAX_LENGTH = JournalLogMutation.MAX_NOTE_LENGTH;
+    private @Nullable UUID pending;
     private final Screen parent;
     private final ResourceLocation tableId;
     private final UUID entryId;
@@ -86,8 +90,28 @@ public final class JournalLogNoteEditScreen extends UiThemedScreen {
             showLengthError();
             return;
         }
-        ClientNetwork.sendToServer(new UpdateJournalLogNotePayload(tableId, entryId, editor.value()));
-        onClose();
+        UUID id = UUID.randomUUID();
+        if (!JournalClientConnection.expectEdit(id, JournalLogEditResultPayload.Operation.NOTE, tableId, this::finish)) return;
+        pending = id;
+        save.setEnabled(false);
+        ClientNetwork.sendToServer(new UpdateJournalLogNotePayload(id, tableId, entryId, editor.value()));
+    }
+
+    private void finish(JournalLogEditResultPayload result) {
+        pending = null;
+        if (result.result() == JournalLogEditResultPayload.Result.APPLIED
+                || result.result() == JournalLogEditResultPayload.Result.UNCHANGED) {
+            onClose();
+            return;
+        }
+        validationMessage = JournalClientConnection.editMessage(result);
+        save.setEnabled(true);
+    }
+
+    @Override public void removed() {
+        JournalClientConnection.abandonEdit(pending);
+        pending = null;
+        super.removed();
     }
 
     @Override public void onClose() { Minecraft.getInstance().setScreen(parent); }

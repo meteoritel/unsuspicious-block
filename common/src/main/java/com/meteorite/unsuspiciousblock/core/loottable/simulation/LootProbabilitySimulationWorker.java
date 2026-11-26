@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.core.loottable.simulation;
 
 import com.meteorite.unsuspiciousblock.core.network.journal.CatalogSimulationDelivery;
+import com.meteorite.unsuspiciousblock.core.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogSimulationSubmission;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogSimulationSubmission.Publication;
@@ -289,7 +290,7 @@ public final class LootProbabilitySimulationWorker {
         }
         if (drainedGeneration != 0L && this.current == null && highQueue.isEmpty() && lowQueue.isEmpty()) {
             logFailedSummary();
-            CatalogSimulationDelivery.broadcastHash(server, drainedGeneration);
+            JournalCatalogHandler.broadcast(server, drainedGeneration);
         }
     }
 

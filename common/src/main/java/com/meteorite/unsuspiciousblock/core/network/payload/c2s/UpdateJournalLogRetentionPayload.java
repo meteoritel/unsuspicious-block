@@ -8,12 +8,14 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.UUID;
+
 /** 玩家修改当前战利品表日志保留策略的请求。 */
-public record UpdateJournalLogRetentionPayload(ResourceLocation tableId,
+public record UpdateJournalLogRetentionPayload(UUID requestId, ResourceLocation tableId,
                                                Action action,
                                                int value) implements CustomPacketPayload {
     public static final Type<UpdateJournalLogRetentionPayload> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "update_journal_log_retention"));
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "update_journal_log_retention_v1"));
     public static final StreamCodec<RegistryFriendlyByteBuf, UpdateJournalLogRetentionPayload> STREAM_CODEC =
             StreamCodec.of(UpdateJournalLogRetentionPayload::encode, UpdateJournalLogRetentionPayload::decode);
 
@@ -23,15 +25,17 @@ public record UpdateJournalLogRetentionPayload(ResourceLocation tableId,
     }
 
     private static void encode(RegistryFriendlyByteBuf buf, UpdateJournalLogRetentionPayload payload) {
+        buf.writeUUID(payload.requestId);
         buf.writeResourceLocation(payload.tableId);
         buf.writeByte(payload.action.id);
         buf.writeVarInt(payload.value);
     }
 
     private static UpdateJournalLogRetentionPayload decode(RegistryFriendlyByteBuf buf) {
+        UUID requestId = buf.readUUID();
         ResourceLocation tableId = buf.readResourceLocation();
         Action action = Action.fromId(buf.readUnsignedByte());
-        return new UpdateJournalLogRetentionPayload(tableId, action, buf.readVarInt());
+        return new UpdateJournalLogRetentionPayload(requestId, tableId, action, buf.readVarInt());
     }
 
     public enum Action {

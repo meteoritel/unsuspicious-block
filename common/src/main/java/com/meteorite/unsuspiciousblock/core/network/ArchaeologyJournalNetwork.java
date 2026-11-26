@@ -7,6 +7,8 @@ import com.meteorite.unsuspiciousblock.core.network.journal.JournalLogHandler;
 import com.meteorite.unsuspiciousblock.core.network.journal.JournalStateHandler;
 import com.meteorite.unsuspiciousblock.core.network.journal.LootTableManagementHandler;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.chat.Component;
+import com.meteorite.unsuspiciousblock.platform.Services;
 
 /**
  * 考古日记网络同步调度入口。
@@ -15,13 +17,19 @@ import net.minecraft.server.level.ServerPlayer;
 public final class ArchaeologyJournalNetwork {
     private ArchaeologyJournalNetwork() {}
 
-    // 玩家数据已完成恢复和迁移后，全量下发日志、目录与解锁进度
+    /** 玩家数据恢复后安排日志摘要、目录公告与进度基线。 */
     public static void syncPreparedPlayerOnJoin(ServerPlayer player) {
-        JournalLogHandler.syncLogSnapshot(player);
-        JournalCatalogHandler.syncCatalogHash(player);
-        LootTableManagementHandler.syncNames(player);
-        JournalStateHandler.syncStateFull(player);
-        // 状态全量同步之后再补发完成奖励，确保客户端 catalog 已就绪可解析表名
+        if (Services.NETWORK.supportsJournal(player)) {
+            JournalLogHandler.syncLogSummary(player);
+            JournalCatalogHandler.announce(player);
+            LootTableManagementHandler.syncNames(player);
+            JournalStateHandler.syncStateFull(player);
+        } else {
+            player.sendSystemMessage(Component.translatableWithFallback(
+                    "screen.unsuspiciousblock.archaeology_journal.incompatible",
+                    "Journal requires the same mod version on both sides."));
+        }
+        // 奖励检查使用已恢复的服务端数据，客户端按可用目录解析通知。
         JournalCompletionRewardChecker.checkAndRewardAll(player);
         // 补发考古收集类成就检测，避免 catalog 未就绪或事件漏触发时遗漏授予
         ArchaeologyChallengeChecker.checkAndGrantAll(player);

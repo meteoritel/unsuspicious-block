@@ -1,7 +1,14 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.Constants;
+import com.meteorite.unsuspiciousblock.core.network.journal.JournalWireNbt;
+import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogIdentity;
+import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogReadSnapshot;
+import net.minecraft.core.RegistryAccess;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalTransferPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalTransferPayload.Kind;
+import net.minecraft.nbt.CompoundTag;
+import java.io.IOException;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
@@ -10,16 +17,12 @@ import com.meteorite.unsuspiciousblock.core.loottable.signature.SignatureExclude
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState.TableProgress;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.CatalogStructure;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
-import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestJournalStateFullPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncArchaeologyCatalogPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalCatalogData;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncCatalogHashPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalStateIncrementalPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalStatePayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.NotifyTableCompletionRewardPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalLogDeleteResultPayload;
 import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -29,7 +32,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +53,6 @@ public final class ArchaeologyJournalClientState {
     private static volatile Consumer<List<Component>> tableUnlockNotifier;
     private static volatile BiConsumer<List<Component>, List<ItemStack>> itemUnlockNotifier;
     private static volatile Consumer<Component> tableCompletionNotifier;
-    private static volatile Consumer<Component> logDeleteNotifier;
     private static final AtomicLong catalogRevision = new AtomicLong();
     private static final AtomicLong stateRevision = new AtomicLong();
     private static volatile ConnectionState connectionState = new ConnectionState();
@@ -61,17 +62,31 @@ public final class ArchaeologyJournalClientState {
         private CatalogStructure catalogStructure = CatalogStructure.empty();
         private Map<ResourceLocation, Set<ResourceLocation>> foldedItems = Map.of();
         private SignatureExcludedComponents exclusions = SignatureExcludedComponents.EMPTY;
-        private ArchaeologyJournalState journalState = new ArchaeologyJournalState();
+        private final ArchaeologyJournalState journalState = new ArchaeologyJournalState();
         private Map<ResourceLocation, TableDefinition> catalogProjection = Collections.emptyMap();
         private long catalogProjectionRevision = -1L;
         private long observedCatalog = -1L;
         private long observedSimulation = -1L;
         private long viewRevision;
-        private @Nullable String cachedCatalogHash;
+        private final JournalTransferAssembly catalogAssembly = new JournalTransferAssembly();
+        private @Nullable CatalogIdentity announcedCatalog;
+        private @Nullable CatalogIdentity committedCatalog;
+        private long catalogTicket;
+        private long catalogDeadline;
+        private boolean catalogWaiting;
+        private boolean catalogRetried;
+        private boolean catalogFailed;
+        private final List<ResourceLocation> pendingRewards = new ArrayList<>();
         private boolean catalogInitialized;
         private boolean stateInitialized;
-        private long lastNotifiedRevision = -1L;
-        private final ResyncPolicy resyncPolicy = new ResyncPolicy(System::currentTimeMillis);
+        private final JournalTransferAssembly progress = new JournalTransferAssembly();
+        private final Map<ResourceLocation, TableProgress> pendingUnlocks = new LinkedHashMap<>();
+        private long committedProgress = -1;
+        private long progressTicket;
+        private long progressDeadline;
+        private boolean waitingProgress = true;
+        private boolean progressRetried;
+        private boolean progressFailed;
     }
 
     private ArchaeologyJournalClientState() {
@@ -92,10 +107,6 @@ public final class ArchaeologyJournalClientState {
         tableCompletionNotifier = notifier;
     }
 
-    public static void registerLogDeleteNotifier(Consumer<Component> notifier) {
-        logDeleteNotifier = notifier;
-    }
-
     /**
      * 完整目录与进度均已提交，空目录也属于已就绪状态。
      */
@@ -103,7 +114,7 @@ public final class ArchaeologyJournalClientState {
         return connectionState.catalogInitialized && connectionState.stateInitialized;
     }
 
-    public static void receiveCatalog(SyncArchaeologyCatalogPayload payload) {
+    private static void applyCatalog(JournalCatalogData payload) {
         // 网络形态还原为客户端内存读模型：表级场景假设按 key 回填到每个分场景概率
         Map<ResourceLocation, TableDefinition> tables = new LinkedHashMap<>();
         for (CatalogTableDto table : payload.catalog()) {
@@ -116,7 +127,8 @@ public final class ArchaeologyJournalClientState {
         connectionState.exclusions = SignatureExcludedComponents.resolve(payload.signatureExclusions());
         connectionState.catalogInitialized = true;
         catalogRevision.incrementAndGet();
-        // 收到完整目录后，哈希由服务端下次同步时更新
+        flushUnlocks(connectionState);
+        flushRewards(connectionState);
     }
 
     /** 按服务端目录同代的签名候选读取玩家进度。 */
@@ -128,126 +140,192 @@ public final class ArchaeologyJournalClientState {
         return progress.viewFor(CatalogQueryIndex.completionItems(tables, tableId), folded, connectionState.exclusions);
     }
 
-    // 收到目录哈希后与本地缓存对比，不一致时请求完整目录
+    /** 公告与场景查询共用同一在途请求。 */
     public static void receiveCatalogHash(SyncCatalogHashPayload payload) {
-        String newHash = payload.catalogHash();
-        String localHash = connectionState.cachedCatalogHash;
-        if (localHash != null && localHash.equals(newHash)) {
-            // 哈希一致，无需重新下载
-            return;
+        ConnectionState state = connectionState;
+        CatalogIdentity identity = payload.identity();
+        if (state.announcedCatalog != null && identity.compareTo(state.announcedCatalog) < 0) return;
+        if (!identity.equals(state.announcedCatalog)) {
+            state.announcedCatalog = identity;
+            state.catalogRetried = false;
+            state.catalogFailed = false;
+            state.catalogWaiting = false;
         }
-        // 哈希不一致或首次收到，请求完整目录
-        ClientNetwork.sendToServer(new RequestCatalogPayload());
-        connectionState.cachedCatalogHash = newHash;
+        if (!state.catalogWaiting && !state.catalogFailed && !identity.equals(state.committedCatalog)) {
+            requestCatalog(state);
+        }
     }
 
-    public static void receiveState(SyncJournalStatePayload payload) {
-        if (payload.state() == null) return;
-
-        long incomingRevision = payload.revision();
-
-        if (!connectionState.stateInitialized) {
-            // 首次同步：仅保存状态，不与空状态比较以避免误触发 Toast
-            ArchaeologyJournalState updated = new ArchaeologyJournalState();
-            updated.readFrom(payload.state());
-            connectionState.journalState = updated;
-            stateRevision.set(incomingRevision);
-            connectionState.stateInitialized = true;
-            connectionState.lastNotifiedRevision = incomingRevision;
-            return;
-        }
-
-        // 版本号相同或更旧，跳过 Toast 检测
-        if (incomingRevision <= connectionState.lastNotifiedRevision) {
-            ArchaeologyJournalState updated = new ArchaeologyJournalState();
-            updated.readFrom(payload.state());
-            connectionState.journalState = updated;
-            stateRevision.set(incomingRevision);
-            return;
-        }
-
-        // 在更新前保存旧状态，用于检测新增解锁
-        ArchaeologyJournalState oldState = connectionState.journalState.copy();
-        ArchaeologyJournalState updated = new ArchaeologyJournalState();
-        updated.readFrom(payload.state());
-        connectionState.journalState = updated;
-        stateRevision.set(incomingRevision);
-
-        // 检测新解锁的表和物品，触发 Toast 通知
-        detectAndNotifyUnlocks(oldState, updated);
-        connectionState.lastNotifiedRevision = incomingRevision;
+    /** 场景报告过期时重新检查共享目录。 */
+    static void refreshCatalog() {
+        ConnectionState state = connectionState;
+        if (state.catalogWaiting) return;
+        state.catalogRetried = false;
+        state.catalogFailed = false;
+        requestCatalog(state);
     }
 
-    // 接收增量状态同步包：仅合并变更的表
-    public static void receiveStateIncremental(SyncJournalStateIncrementalPayload payload) {
-        if (payload.changedTables() == null) return;
+    private static void requestCatalog(ConnectionState state) {
+        state.catalogAssembly.clear();
+        state.catalogWaiting = true;
+        state.catalogDeadline = System.currentTimeMillis() + JournalTransferAssembly.RESPONSE_TIMEOUT_MS;
+        ClientNetwork.sendToServer(new RequestCatalogPayload(++state.catalogTicket, state.announcedCatalog));
+    }
 
-        long incomingRevision = payload.revision();
-
-        if (!connectionState.stateInitialized) {
-            // 增量包到达但尚未完成首次全量同步，主动请求全量重同步
-            requestFullStateWithCooldown();
+    static void receiveCatalogTransfer(JournalTransferPayload piece, RegistryAccess registries) {
+        ConnectionState state = connectionState;
+        CatalogIdentity expected = state.announcedCatalog;
+        if (!state.catalogWaiting || piece.ticket() != state.catalogTicket || expected == null
+                || piece.revision() != expected.revision()) return;
+        if (piece.total() == 0) {
+            failCatalog(state);
             return;
         }
+        try {
+            byte[] content = state.catalogAssembly.accept(piece, System.currentTimeMillis());
+            if (content == null) return;
+            JournalCatalogData data = CatalogReadSnapshot.decode(content, expected, registries);
+            state.catalogWaiting = false;
+            applyCatalog(data);
+            state.committedCatalog = expected;
+            state.catalogRetried = false;
+        } catch (RuntimeException exception) {
+            Constants.LOG.warn(Constants.LOG_TAG + "考古目录事务无法应用", exception);
+            recoverCatalog(state);
+        }
+    }
 
-        // 版本号相同或更旧，跳过
-        if (incomingRevision <= connectionState.lastNotifiedRevision) {
+    static void tickCatalog() {
+        ConnectionState state = connectionState;
+        if (state.catalogFailed) return;
+        long now = System.currentTimeMillis();
+        if (state.catalogDeadline == 0) {
+            state.catalogDeadline = now + JournalTransferAssembly.RESPONSE_TIMEOUT_MS;
+        }
+        if (state.catalogAssembly.expired(now) || (!state.catalogInitialized || state.catalogWaiting)
+                && !state.catalogAssembly.active() && now >= state.catalogDeadline) recoverCatalog(state);
+    }
+
+    private static void recoverCatalog(ConnectionState state) {
+        if (state.catalogRetried) {
+            failCatalog(state);
             return;
         }
+        state.catalogRetried = true;
+        requestCatalog(state);
+    }
 
-        // 间隙检测：incomingRevision 应严格等于 connectionState.lastNotifiedRevision + 1
-        // 若大于，说明中间有增量包丢失或被跳过，本地状态已不一致，需请求全量重同步
-        if (incomingRevision > connectionState.lastNotifiedRevision + 1) {
-            Constants.LOG.warn("检测到考古进度 revision 间隙: 期望 {}, 收到 {}, 请求全量重同步",
-                    connectionState.lastNotifiedRevision + 1, incomingRevision);
-            requestFullStateWithCooldown();
+    private static void failCatalog(ConnectionState state) {
+        state.catalogAssembly.clear();
+        state.catalogWaiting = false;
+        state.catalogFailed = true;
+        flushUnlocks(state);
+        flushRewards(state);
+    }
+
+    /** 某个基础数据流进入终态时，阅读入口可提示重新打开。 */
+    public static boolean readingFailed() {
+        return connectionState.catalogFailed || connectionState.progressFailed;
+    }
+
+    /** 用户再次打开笔记时允许重试终态数据流。 */
+    public static void retryReading() {
+        ConnectionState state = connectionState;
+        if (state.catalogFailed) refreshCatalog();
+        if (state.progressFailed) {
+            state.progressFailed = false;
+            state.progressRetried = false;
+            recoverProgress(state);
+        }
+    }
+
+    /** 完整进度事务按连接内已提交版本推进。 */
+    static void receiveProgress(JournalTransferPayload piece) {
+        ConnectionState state = connectionState;
+        boolean baseline = piece.kind() == Kind.PROGRESS_BASELINE;
+        if (state.progressFailed || piece.ticket() != state.progressTicket
+                || piece.revision() < state.committedProgress
+                || piece.revision() == state.committedProgress && !state.waitingProgress
+                || !baseline && state.waitingProgress && state.progressTicket > 0) return;
+        if (piece.total() == 0) {
+            failProgress(state);
             return;
         }
-
-        // 仅复制变更表用于 Diff，避免全量拷贝
-        Set<ResourceLocation> changedIds = new HashSet<>();
-        for (String key : payload.changedTables().getAllKeys()) {
-            ResourceLocation id = ResourceLocation.tryParse(key);
-            if (id != null) {
-                changedIds.add(id);
+        if (!baseline && (state.waitingProgress || piece.revision() != state.committedProgress + 1)) {
+            recoverProgress(state);
+            return;
+        }
+        if (baseline && piece.offset() == 0 && !state.progress.matches(piece)) state.progress.clear();
+        try {
+            byte[] bytes = state.progress.accept(piece, System.currentTimeMillis());
+            if (bytes == null) return;
+            CompoundTag tag = JournalWireNbt.decode(bytes, piece.kind().maxBytes() * 2L);
+            Map<ResourceLocation, TableProgress> previous = state.journalState.applyPublication(tag, baseline);
+            boolean first = !state.stateInitialized;
+            state.committedProgress = piece.revision();
+            state.stateInitialized = true;
+            state.waitingProgress = false;
+            state.progressRetried = false;
+            stateRevision.incrementAndGet();
+            if (!first) {
+                Iterable<ResourceLocation> updated = baseline ? state.journalState.getTables().keySet() : previous.keySet();
+                for (ResourceLocation id : updated) {
+                    if (!state.pendingUnlocks.containsKey(id)) state.pendingUnlocks.put(id, previous.get(id));
+                }
+                flushUnlocks(state);
             }
-        }
-        ArchaeologyJournalState oldState = connectionState.journalState.partialCopy(changedIds);
-        connectionState.journalState.mergeFromIncremental(payload.changedTables(), incomingRevision);
-        stateRevision.set(incomingRevision);
-
-        // 仅对变更的表做 Diff 检测
-        detectAndNotifyUnlocksForTables(oldState, connectionState.journalState, payload.changedTables());
-        connectionState.lastNotifiedRevision = incomingRevision;
-    }
-
-    // 请求全量重同步（带限流），用于 revision 间隙或增量先于全量到达的恢复路径
-    private static void requestFullStateWithCooldown() {
-        if (connectionState.resyncPolicy.tryRequest()) {
-            ClientNetwork.sendToServer(new RequestJournalStateFullPayload());
+        } catch (IOException | RuntimeException exception) {
+            Constants.LOG.warn(Constants.LOG_TAG + "考古进度事务无法应用", exception);
+            recoverProgress(state);
         }
     }
 
-    public static void receiveLogDeleteResult(JournalLogDeleteResultPayload payload) {
-        Component message = switch (payload.result()) {
-            case SUCCESS -> Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.log_delete.success", payload.removedCount());
-            case NOT_FOUND -> Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.log_delete.not_found");
-            case INVALID -> Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.log_delete.invalid");
-        };
-        Consumer<Component> notifier = logDeleteNotifier;
-        if (notifier != null) {
-            notifier.accept(message);
+    /** 连接 tick 驱动缺片恢复和明确失败。 */
+    static void tickProgress() {
+        ConnectionState state = connectionState;
+        if (state.progressFailed) return;
+        long now = System.currentTimeMillis();
+        if (state.progressDeadline == 0) state.progressDeadline = now + JournalTransferAssembly.RESPONSE_TIMEOUT_MS;
+        if (state.progress.expired(now) || state.waitingProgress && !state.progress.active()
+                && now >= state.progressDeadline) recoverProgress(state);
+    }
+
+    private static void recoverProgress(ConnectionState state) {
+        if (state.progressRetried) {
+            failProgress(state);
+            return;
         }
+        state.progress.clear();
+        state.waitingProgress = true;
+        state.progressRetried = true;
+        state.progressDeadline = System.currentTimeMillis() + JournalTransferAssembly.RESPONSE_TIMEOUT_MS;
+        ClientNetwork.sendToServer(new RequestJournalStateFullPayload(++state.progressTicket));
+    }
+
+    private static void failProgress(ConnectionState state) {
+        state.progress.clear();
+        state.progressFailed = true;
+        state.waitingProgress = false;
     }
 
     // 收到服务端的 100% 完成奖励通知：解析表名后走回调（与另两条解锁通知同一解耦方式）
     public static void receiveTableCompletionReward(NotifyTableCompletionRewardPayload payload) {
-        ResourceLocation tableId = payload.tableId();
+        ConnectionState state = connectionState;
+        if ((!state.catalogInitialized || state.catalogWaiting) && !state.catalogFailed) {
+            state.pendingRewards.add(payload.tableId());
+            return;
+        }
+        notifyReward(payload.tableId());
+    }
+
+    private static void flushRewards(ConnectionState state) {
+        state.pendingRewards.forEach(ArchaeologyJournalClientState::notifyReward);
+        state.pendingRewards.clear();
+    }
+
+    private static void notifyReward(ResourceLocation tableId) {
         TableDefinition def = connectionState.serverCatalog.get(tableId);
-        Component tableName = def != null ? ClientLootTableLanguageStore.displayName(payload.tableId())
+        Component tableName = def != null ? ClientLootTableLanguageStore.displayName(tableId)
                 : Component.literal(tableId.getPath());
         Consumer<Component> notifier = tableCompletionNotifier;
         if (notifier != null) {
@@ -259,7 +337,7 @@ public final class ArchaeologyJournalClientState {
      * 目录投影：在原始目录上叠加当前模拟选择与结果，供日志详情、tooltip 与网格共用。
      * <p>
      * 目录版本与场景投影版本分别观察，任一变化推进单调视图版本：
-     * 收到完整目录（{@link #receiveCatalog}）、模拟选择/当前测值变化（投影版本）、
+     * 收到完整目录（{@link #applyCatalog}）、模拟选择/当前测值变化（投影版本）、
      * 断连重置（由 {@link JournalClientConnection} 负责）。命中时返回同一份**不可修改**映射，
      * 调用方只能读取。语言切换无需失效：投影只持有 {@code Component} 与 record，翻译在渲染时解析。
      */
@@ -280,14 +358,13 @@ public final class ArchaeologyJournalClientState {
     public static boolean hasItemSearchResult(ResourceLocation itemId) {
         JournalSearchQuery query = JournalSearchQuery.forItemId(itemId);
         ArchaeologyJournalState state = connectionState.journalState;
-        ArchaeologyJournalLogState logState = ArchaeologyJournalLogLocalStore.getState();
         for (Map.Entry<ResourceLocation, TableDefinition> entry : connectionState.serverCatalog.entrySet()) {
             ArchaeologyJournalState.TableProgress progress = state.getTable(entry.getKey());
             if (progress == null || !progress.isUnlocked()) {
                 continue;
             }
             ArchaeologyJournalEntry view = ArchaeologyJournalEntry.of(
-                    entry.getKey(), entry.getValue(), progress, logState.getTable(entry.getKey()));
+                    entry.getKey(), entry.getValue(), progress);
             if (query.matchesTableByItem(view.id(), view.displayName().getString(), view.type(), view.items())) {
                 return true;
             }
@@ -324,65 +401,24 @@ public final class ArchaeologyJournalClientState {
         stateRevision.incrementAndGet();
     }
 
-    // 比较旧状态和新状态，检测新解锁的表和物品并通知
-    private static void detectAndNotifyUnlocks(ArchaeologyJournalState oldState, ArchaeologyJournalState newState) {
-        Map<ResourceLocation, TableDefinition> catalog = connectionState.serverCatalog;
+    private static void flushUnlocks(ConnectionState state) {
+        if (!state.catalogInitialized || state.catalogWaiting || state.pendingUnlocks.isEmpty()) return;
+        Map<ResourceLocation, TableDefinition> catalog = state.serverCatalog;
         List<Component> newTables = new ArrayList<>();
         List<Component> itemNames = new ArrayList<>();
         List<ItemStack> itemIcons = new ArrayList<>();
-
-        for (Map.Entry<ResourceLocation, ArchaeologyJournalState.TableProgress> entry : newState.getTables().entrySet()) {
-            ResourceLocation tableId = entry.getKey();
-            // 仅对追踪目录中的表触发 Toast，避免未追踪的表（不会在考古笔记中显示）弹出通知
-            if (!catalog.containsKey(tableId)) {
-                continue;
-            }
-            ArchaeologyJournalState.TableProgress newProgress = entry.getValue();
-            ArchaeologyJournalState.TableProgress oldProgress = oldState.getTable(tableId);
-
-            if (newProgress.isUnlocked() && (oldProgress == null || !oldProgress.isUnlocked())) {
+        state.pendingUnlocks.forEach((tableId, oldProgress) -> {
+            if (!catalog.containsKey(tableId)) return;
+            TableProgress newProgress = state.journalState.getTable(tableId);
+            if (newProgress == null || !newProgress.isUnlocked()) return;
+            if (oldProgress == null || !oldProgress.isUnlocked()) {
                 newTables.add(resolveTableName(tableId, catalog));
             }
-
-            if (newProgress.isUnlocked() && oldProgress != null) {
+            if (oldProgress != null) {
                 collectItemUnlocks(tableId, newProgress, oldProgress, catalog, itemNames, itemIcons);
             }
-        }
-
-        notifyUnlocks(newTables, itemNames, itemIcons);
-    }
-
-    // 仅对增量包中变更的表做 Diff 检测并通知
-    private static void detectAndNotifyUnlocksForTables(ArchaeologyJournalState oldState,
-                                                        ArchaeologyJournalState newState,
-                                                        CompoundTag changedTables) {
-        Map<ResourceLocation, TableDefinition> catalog = connectionState.serverCatalog;
-        List<Component> newTables = new ArrayList<>();
-        List<Component> itemNames = new ArrayList<>();
-        List<ItemStack> itemIcons = new ArrayList<>();
-
-        for (String key : changedTables.getAllKeys()) {
-            ResourceLocation tableId = ResourceLocation.tryParse(key);
-            if (tableId == null) continue;
-            // 仅对追踪目录中的表触发 Toast，避免未追踪的表（不会在考古笔记中显示）弹出通知
-            if (!catalog.containsKey(tableId)) {
-                continue;
-            }
-
-            ArchaeologyJournalState.TableProgress newProgress = newState.getTable(tableId);
-            if (newProgress == null) continue;
-
-            ArchaeologyJournalState.TableProgress oldProgress = oldState.getTable(tableId);
-
-            if (newProgress.isUnlocked() && (oldProgress == null || !oldProgress.isUnlocked())) {
-                newTables.add(resolveTableName(tableId, catalog));
-            }
-
-            if (newProgress.isUnlocked() && oldProgress != null) {
-                collectItemUnlocks(tableId, newProgress, oldProgress, catalog, itemNames, itemIcons);
-            }
-        }
-
+        });
+        state.pendingUnlocks.clear();
         notifyUnlocks(newTables, itemNames, itemIcons);
     }
 

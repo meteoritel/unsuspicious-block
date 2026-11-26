@@ -26,7 +26,7 @@ import java.util.UUID;
  * 包含战利品来源类型、位置、生物群系、所在结构、
  * 预期的战利品（expectedLoot）与实际获取的战利品（actualLoot）。
  * {@code tableStack} 记录嵌套战利品表的完整链路（根表→子表→...），缺失时视为单层。
- * 支持 NBT 序列化与双向同步。
+ * NBT 表示用于存档和服务端发布。
  */
 public record ExcavationLogEntry(UUID entryId,
                                  @Nullable LootSourceType lootSource,

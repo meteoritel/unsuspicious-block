@@ -86,7 +86,7 @@ public final class ArchaeologyJournalState {
     // 收集并清空脏表集合，用于增量同步
     // 若存在脏表，递增 revision，保证一次增量同步只 +1
     // 这样一次业务操作内多次 markDirty 不会让 revision 跳跃，
-    // 客户端的间隙检测（incomingRevision > lastNotifiedRevision + 1）才具有真实意义
+    // 客户端通过已提交修订进行的间隙检测才具有真实意义
     public Set<ResourceLocation> drainDirtyTables() {
         Set<ResourceLocation> dirty = new LinkedHashSet<>(this.dirtyTables);
         this.dirtyTables.clear();
@@ -108,20 +108,23 @@ public final class ArchaeologyJournalState {
         return tag;
     }
 
-    /**
-     * 从增量 NBT 合并变更的表到现有状态。
-     * 采用服务端权威语义：增量数据中的条目会直接覆盖本地对应条目，
-     * 客户端不会对服务端发来的数据进行二次合并或裁剪。
-     */
-    public void mergeFromIncremental(CompoundTag tablesTag, long newRevision) {
+    /** 完整解析后再替换线路所列的表，返回旧表用于解锁通知。 */
+    public Map<ResourceLocation, TableProgress> applyPublication(CompoundTag tablesTag, boolean baseline) {
+        Map<ResourceLocation, TableProgress> incoming = new LinkedHashMap<>();
         for (String key : tablesTag.getAllKeys()) {
-            ResourceLocation tableId = ResourceLocation.tryParse(key);
-            if (tableId == null) {
-                continue;
-            }
-            this.tables.put(tableId, TableProgress.fromTag(tablesTag.getCompound(key)));
+            ResourceLocation tableId = ResourceLocation.parse(key);
+            if (!tablesTag.contains(key, Tag.TAG_COMPOUND)) throw new IllegalArgumentException("考古进度表无效");
+            incoming.put(tableId, TableProgress.fromTag(tablesTag.getCompound(key)));
         }
-        this.revision = newRevision;
+        Map<ResourceLocation, TableProgress> previous = new LinkedHashMap<>();
+        if (baseline) {
+            previous.putAll(this.tables);
+            this.tables.clear();
+        } else {
+            for (ResourceLocation id : incoming.keySet()) previous.put(id, this.tables.get(id));
+        }
+        this.tables.putAll(incoming);
+        return previous;
     }
 
     // 解锁指定战利品表（同时创建 TableProgress）
@@ -247,26 +250,6 @@ public final class ArchaeologyJournalState {
         return this.tables.get(tableId);
     }
 
-    // 深度复制整个状态
-    public ArchaeologyJournalState copy() {
-        ArchaeologyJournalState copy = new ArchaeologyJournalState();
-        copy.copyFrom(this);
-        return copy;
-    }
-
-    // 仅复制指定表集合的进度，用于增量 Diff
-    public ArchaeologyJournalState partialCopy(Set<ResourceLocation> tableIds) {
-        ArchaeologyJournalState partial = new ArchaeologyJournalState();
-        for (ResourceLocation id : tableIds) {
-            TableProgress progress = this.tables.get(id);
-            if (progress != null) {
-                partial.tables.put(id, progress.copy());
-            }
-        }
-        partial.revision = this.revision;
-        return partial;
-    }
-
     // 从另一个状态复制全部数据（包括 revision）
     public void copyFrom(ArchaeologyJournalState other) {
         this.tables.clear();
@@ -278,6 +261,7 @@ public final class ArchaeologyJournalState {
         this.recentSequence = other.recentSequence;
         this.revision = other.revision;
         this.dirtyTables.clear();
+        this.dirtyTables.addAll(other.dirtyTables);
     }
 
     // 序列化为 NBT（创建新 CompoundTag 并写入）

@@ -9,6 +9,9 @@ import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalStat
 import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSession;
 import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSessionHolder;
 import com.meteorite.unsuspiciousblock.core.network.ArchaeologyJournalNetwork;
+import com.meteorite.unsuspiciousblock.core.network.journal.JournalLogHandler;
+import com.meteorite.unsuspiciousblock.core.network.journal.JournalStateHandler;
+import com.meteorite.unsuspiciousblock.core.network.journal.JournalCatalogHandler;
 import com.meteorite.unsuspiciousblock.core.world.JournalLogStorage;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
@@ -52,6 +55,11 @@ public final class JournalPlayerDataService {
     // 服务端 tick 驱动日志分片的限量落盘
     public static void onServerTick(MinecraftServer server) {
         JournalLogStorage.tick(server);
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            JournalLogHandler.tick(player);
+            JournalStateHandler.tick(player);
+            JournalCatalogHandler.tick(player);
+        }
     }
 
     // 玩家登录：恢复日志、完成两类数据迁移，再统一下发客户端状态

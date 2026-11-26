@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 
 /** 日志意图、持久化时效与失败恢复；状态对象保持与存储和会话共享。 */
 public final class JournalLogMutation {
-    private static final int MAX_NOTE_LENGTH = 500;
+    public static final int MAX_NOTE_LENGTH = 500;
     private final ArchaeologyJournalLogState state;
     private final Consumer<Set<ResourceLocation>> defer;
     private final Predicate<Set<ResourceLocation>> commit;
@@ -98,53 +98,64 @@ public final class JournalLogMutation {
 
     private static Result applyIntent(ArchaeologyJournalLogState state, Intent intent) {
         return switch (intent) {
-            case FirstUnlock value -> Result.status(state.setFirstUnlockMetaMin(value.tableId(), value.source(),
-                    value.gameTime(), value.dayTime()) ? Status.CHANGED : Status.UNCHANGED);
+            case FirstUnlock value -> state.setFirstUnlockMetaMin(value.tableId(), value.source(),
+                    value.gameTime(), value.dayTime())
+                    ? Result.changed(new TableChange(value.tableId(), null, List.of(), false), 0, 0)
+                    : Result.status(Status.UNCHANGED);
             case Upsert value -> upsert(state, value.tableId(), value.entry());
             case MergeAcquisition value -> upsert(state, value.tableId(),
                     state.mergeAcquisition(value.tableId(), value.delta(), value.legacyActual()));
             case UpdateNote value -> updateNote(state, value);
-            case RemoveEntries value -> Result.removed(state.removeEntries(value.tableId(), value.entryIds()));
-            case ClearEntries value -> Result.removed(state.clearEntries(value.tableId()));
-            case ClearAllEntries ignored -> Result.removed(state.clearAllEntries());
-            case RemoveTable value -> Result.status(state.removeTable(value.tableId()) ? Status.CHANGED : Status.NOT_FOUND);
+            case RemoveEntries value -> {
+                List<UUID> removed = state.removeEntries(value.tableId(), value.entryIds());
+                yield Result.removed(new TableChange(value.tableId(), null, removed, false), removed.size());
+            }
+            case ClearEntries value -> Result.removed(new TableChange(value.tableId(), null, List.of(), true),
+                    state.clearEntries(value.tableId()));
+            case ClearAllEntries ignored -> Result.removed(ClearHistories.ALL_ENTRIES, state.clearAllEntries());
+            case RemoveTable value -> state.removeTable(value.tableId())
+                    ? Result.changed(new TableRemoved(value.tableId()), 0, 0) : Result.status(Status.NOT_FOUND);
             case ClearAll ignored -> {
                 boolean changed = !state.isEmpty();
                 state.clear();
-                yield Result.status(changed ? Status.CHANGED : Status.UNCHANGED);
+                yield changed ? Result.changed(ClearHistories.ALL_TABLES, 0, 0) : Result.status(Status.UNCHANGED);
             }
             case SetRetention value -> {
                 ArchaeologyJournalLogState.RetentionUpdateResult result = state.setRetentionLimit(value.tableId(), value.limit());
-                yield new Result(Status.CHANGED, result.removedEntryIds().size(), result.retentionLimit(), null, null);
+                yield result.changed()
+                        ? Result.changed(new TableChange(value.tableId(), null, result.removedEntryIds(), false),
+                                result.removedEntryIds().size(), result.retentionLimit())
+                        : new Result(Status.UNCHANGED, 0, result.retentionLimit(), null, null);
             }
             case Prune value -> {
-                List<UUID> removed = state.pruneToMostRecent(value.tableId(), value.keepCount());
                 ArchaeologyJournalLogState.TableLogHistory table = state.getTable(value.tableId());
-                // 即使没有条目被裁剪，立即路径仍确认当前表和索引。
-                yield new Result(Status.CHANGED, removed.size(),
-                        table == null ? ArchaeologyJournalLogState.TableLogHistory.getGlobalMaxEntries() : table.getRetentionLimit(),
-                        null, null);
+                if (table == null) yield Result.status(Status.NOT_FOUND);
+                List<UUID> removed = state.pruneToMostRecent(value.tableId(), value.keepCount());
+                yield removed.isEmpty() ? new Result(Status.UNCHANGED, 0, table.getRetentionLimit(), null, null)
+                        : Result.changed(new TableChange(value.tableId(), null, removed, false),
+                                removed.size(), table.getRetentionLimit());
             }
         };
     }
 
     private static Result upsert(ArchaeologyJournalLogState state, ResourceLocation tableId, ExcavationLogEntry entry) {
         ArchaeologyJournalLogState.EntryUpsertResult result = state.upsertEntryWithResult(tableId, entry);
-        return new Result(result.blocked() ? Status.BLOCKED : result.changed() ? Status.CHANGED : Status.UNCHANGED,
-                result.removedEntryIds().size(), 0, result, entry);
+        Status status = result.blocked() ? Status.BLOCKED : result.changed() ? Status.CHANGED : Status.UNCHANGED;
+        TableChange change = result.changed() ? new TableChange(tableId,
+                result.removedEntryIds().contains(entry.entryId()) ? null : entry, result.removedEntryIds(), false) : null;
+        return new Result(status, result.removedEntryIds().size(), 0, result, change);
     }
 
     private static Result updateNote(ArchaeologyJournalLogState state, UpdateNote value) {
         ArchaeologyJournalLogState.TableLogHistory table = state.getTable(value.tableId());
         if (table == null) return Result.status(Status.NOT_FOUND);
-        ExcavationLogEntry existing = table.getEntries().stream()
-                .filter(entry -> entry.entryId().equals(value.entryId())).findFirst().orElse(null);
+        ExcavationLogEntry existing = table.getEntry(value.entryId());
         if (existing == null) return Result.status(Status.NOT_FOUND);
         String sanitized = sanitizeNote(value.note());
         if (sanitized.equals(existing.note())) return Result.status(Status.UNCHANGED);
         ExcavationLogEntry updated = existing.withNote(sanitized);
         state.upsertEntry(value.tableId(), updated);
-        return new Result(Status.CHANGED, 0, 0, null, updated);
+        return Result.changed(new TableChange(value.tableId(), updated, List.of(), false), 0, 0);
     }
 
     private static String sanitizeNote(@Nullable String raw) {
@@ -203,13 +214,29 @@ public final class JournalLogMutation {
     /** 即时失败只返回 FAILED，成功回执由调用方按结果发送。 */
     public enum Status { CHANGED, UNCHANGED, NOT_FOUND, BLOCKED, FAILED }
 
-    /** 仅相应意图填充条目和 upsert 决策，其余操作使用数量与保留上限。 */
+    /** 一次成功写入产生的变更，立即变更在索引提交后才交付。 */
+    public sealed interface Change permits TableChange, TableRemoved, ClearHistories {}
+
+    /** 条目增删以及需要重新读取元数据的表。 */
+    public record TableChange(ResourceLocation tableId, @Nullable ExcavationLogEntry entry,
+                              List<UUID> removedEntryIds, boolean clearEntries) implements Change {}
+
+    /** 彻底移除一张表及其累计量。 */
+    public record TableRemoved(ResourceLocation tableId) implements Change {}
+
+    /** 全局清理范围。 */
+    public enum ClearHistories implements Change { ALL_ENTRIES, ALL_TABLES }
+
+    /** 失败与空操作不产生可发布变更。 */
     public record Result(Status status, int removedCount, int retentionLimit,
                          @Nullable ArchaeologyJournalLogState.EntryUpsertResult upsert,
-                         @Nullable ExcavationLogEntry entry) {
+                         @Nullable Change change) {
         private static Result status(Status status) { return new Result(status, 0, 0, null, null); }
-        private static Result removed(int count) {
-            return new Result(count > 0 ? Status.CHANGED : Status.NOT_FOUND, count, 0, null, null);
+        private static Result changed(Change change, int count, int limit) {
+            return new Result(Status.CHANGED, count, limit, null, change);
+        }
+        private static Result removed(Change change, int count) {
+            return count > 0 ? changed(change, count, 0) : status(Status.NOT_FOUND);
         }
     }
 }

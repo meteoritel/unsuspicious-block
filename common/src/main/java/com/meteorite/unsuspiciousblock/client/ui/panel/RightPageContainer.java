@@ -5,7 +5,6 @@ import com.meteorite.meteosuikit.api.input.*;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
-import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingState.PagePositions;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
@@ -181,8 +180,7 @@ public final class RightPageContainer implements UiInputContainer {
     public void setTable(@Nullable ResourceLocation tableId, List<ItemGridPanel.GridItem> items,
                          List<ItemGridPanel.ChildTableEntry> childTables,
                          List<DetailOverlayPanel.IntroItem> introItems,
-                         int parsedCount, int totalCount,
-                         @Nullable ArchaeologyEntryLogRef logRef) {
+                         int parsedCount, int totalCount) {
         boolean sameTable = Objects.equals(this.currentTableId, tableId);
         ReadingState previous = captureReadingState();
 
@@ -204,7 +202,6 @@ public final class RightPageContainer implements UiInputContainer {
         if (tableId != null) JournalClientConnection.scenario().setTargets(tableId, targets);
         this.gridPanel.setTable(items, childTables, targets);
         this.detailPanel.setData(tableId, parsedCount, totalCount, introItems);
-        this.logPanel.setData(logRef);
 
         if (!sameTable) {
             overlays.close();
@@ -222,6 +219,13 @@ public final class RightPageContainer implements UiInputContainer {
         this.scenarioPanel.setTable(tableId);
         this.scenarioDetailPanel.setTable(tableId);
         if (sameTable) restoreReadingState(previous);
+        syncPageChrome();
+    }
+
+    /** 提交已加载的历史，按 UUID 保持当前详情。 */
+    public void setLogHistory(List<ExcavationLogEntry> history) {
+        this.logPanel.setData(history);
+        restoreLogSelection(this.selectedLogEntryId, isShowingLogDetail());
         syncPageChrome();
     }
 

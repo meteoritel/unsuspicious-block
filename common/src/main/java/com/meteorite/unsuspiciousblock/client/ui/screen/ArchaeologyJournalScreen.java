@@ -19,7 +19,6 @@ import com.meteorite.meteosuikit.api.render.UiLayers;
 import com.meteorite.meteosuikit.api.render.UiTooltipPresenter;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.meteosuikit.api.text.TextScroll;
-import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 import com.meteorite.unsuspiciousblock.client.state.SimulationPreferenceStore;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingState;
@@ -31,7 +30,7 @@ import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
 import com.meteorite.unsuspiciousblock.client.ui.panel.WelcomeStatsPanel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalLogLocalStore;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalMirror;
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
@@ -42,11 +41,9 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
-import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.DeleteJournalLogPayload;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
-import com.meteorite.unsuspiciousblock.core.loottable.LootTrackingSettings;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -110,6 +107,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private int categoryFocusIndex;
     private int restoredCatalogScrollOffset;
     private int emptyCatalogScrollTicks;
+    private long displayedLogRevision = -1;
+    private long displayedLogEpoch = -1;
     private int catalogProgressScrollTicks;
     @Nullable
     private final ResourceLocation initialItemSearch;
@@ -161,9 +160,9 @@ public class ArchaeologyJournalScreen extends UiScreen {
         if (!history.back(this::validNavigation, this::restoreUiState)) onClose();
     }
 
-    public ArchaeologyJournalScreen(ArchaeologyJournalState state, @Nullable ResourceLocation initialItemSearch) {
+    public ArchaeologyJournalScreen(@Nullable ResourceLocation initialItemSearch) {
         super(Component.translatable("screen.unsuspiciousblock.archaeology_journal.title"));
-        this.viewModel = new JournalViewModel(state);
+        this.viewModel = new JournalViewModel();
         this.catalogToolbar = new CatalogToolbar(this::rebuildViewModels, this::rebuildWidgets);
         this.logToolbar = new LogToolbar();
         this.initialItemSearch = initialItemSearch;
@@ -175,6 +174,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
     @Override
     protected void init() {
         super.init();
+        if (JournalClientConnection.supportsJournal()) ArchaeologyJournalClientState.retryReading();
+        displayedLogRevision = -1;
         if (resumeStateEpoch != JournalClientConnection.epoch()) resumeState = null;
         this.bookLayout = JournalBookBackground.compute(viewport().logicalWidth(), viewport().logicalHeight());
         this.overlays.setBounds(viewport().logicalWidth(), viewport().logicalHeight());
@@ -438,6 +439,15 @@ public class ArchaeologyJournalScreen extends UiScreen {
         }
 
         this.rebuildWidgets();
+        JournalMirror mirror = JournalClientConnection.log();
+        if (snapshot.table() != null && snapshot.rightPage().tab() == RightPageContainer.Tab.LOG) {
+            if (mirror.isDisplaying(snapshot.table()) && mirror.status() == JournalMirror.Status.READY) {
+                rightPage.setLogHistory(mirror.history());
+            } else {
+                pendingReading = new JournalReadingState(snapshot.table(), snapshot.rightPage());
+                pendingReadingEpoch = JournalClientConnection.epoch();
+            }
+        }
         restoreRightPage(snapshot.table(), snapshot.rightPage());
         this.categoryFocusIndex = snapshot.categoryFocusIndex();
         if (this.catalogPanel != null) {
@@ -462,6 +472,14 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 guiGraphics, this.font);
         else if (this.viewModel.selectedTable() == null) renderEmptyCategoryPage(guiGraphics);
         else this.rightPage.render(guiGraphics, this.font, pointer);
+        if (!JournalClientConnection.supportsJournal() || ArchaeologyJournalClientState.readingFailed()) {
+            String key = JournalClientConnection.supportsJournal()
+                    ? "screen.unsuspiciousblock.archaeology_journal.data_unavailable"
+                    : "screen.unsuspiciousblock.archaeology_journal.incompatible";
+            guiGraphics.drawCenteredString(font, Component.translatable(key),
+                    this.bookLayout.rightPageX() + this.bookLayout.rightPageWidth() / 2,
+                    this.bookLayout.rightPageY() + 4, UiTextScheme.PARCHMENT.label());
+        }
         if (hasSelectedTable()) rightPage.renderControls(guiGraphics, font, pointer);
         for (UiWidget widget : widgets) if (widget.isVisible()) widget.render(guiGraphics, font, pointer);
         if (pointer.allowsTooltip() && pointer.hit() != null)
@@ -473,14 +491,34 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private void refreshAndSync() {
         // 搜索输入防抖：到点才提交一次，避免逐字符重建整份目录投影
         this.catalogToolbar.flushPendingSearchIfDue();
-        if (this.viewModel.refreshIfNeeded()) {
+        JournalViewModel.Refresh refresh = this.viewModel.refreshIfNeeded();
+        if (refresh == JournalViewModel.Refresh.CONTENT) {
             this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
             this.viewModel.rebuildViewModels();
             syncCatalogProjection();
             this.updateItemGridPanel();
             restorePendingReading();
             this.syncButtonState();
+        } else if (refresh == JournalViewModel.Refresh.ORDER) {
+            this.viewModel.reorderRows();
+            syncCatalogProjection();
         }
+        refreshLogHistory();
+    }
+
+    private void refreshLogHistory() {
+        JournalMirror mirror = JournalClientConnection.log();
+        ResourceLocation table = !viewModel.isCategoryHome() && rightPage.getActiveTab() == RightPageContainer.Tab.LOG
+                ? viewModel.selectedTableId() : null;
+        mirror.select(table);
+        long epoch = JournalClientConnection.epoch();
+        if (displayedLogEpoch == epoch && displayedLogRevision == mirror.detailRevision()) return;
+        displayedLogEpoch = epoch;
+        displayedLogRevision = mirror.detailRevision();
+        rightPage.getLogPanel().setLoadStatus(mirror.status());
+        rightPage.setLogHistory(mirror.status() == JournalMirror.Status.READY ? mirror.history() : List.of());
+        restorePendingReading();
+        syncButtonState();
     }
 
     // 渲染左侧目录区域（滚动目录、解锁进度、空状态）
@@ -583,6 +621,19 @@ public class ArchaeologyJournalScreen extends UiScreen {
             return;
         }
         if (!ArchaeologyJournalClientState.isReadingReady()) return;
+        if (target.table() != null && target.rightPage().tab() == RightPageContainer.Tab.LOG
+                && viewModel.isNavigationTargetValid(target.table())
+                && (!Objects.equals(target.table(), viewModel.selectedTableId())
+                        || !JournalClientConnection.log().isDisplaying(target.table()))) {
+            viewModel.prepareNavigationTo(target.table());
+            viewModel.rebuildViewModels();
+            syncCatalogProjection();
+            setSelectedTable(target.table());
+            rightPage.setActiveTab(RightPageContainer.Tab.LOG);
+            return;
+        }
+        if (target.table() != null && target.rightPage().tab() == RightPageContainer.Tab.LOG
+                && JournalClientConnection.log().status() == JournalMirror.Status.LOADING) return;
         boolean categoryHomeMode = viewModel.isCategoryHomeMode();
         pendingReading = null;
         if (target.table() == null) {
@@ -896,10 +947,10 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private void updateItemGridPanel() {
         JournalViewModel.BuildGridResult result = this.viewModel.buildGridItems();
         if (result == null) {
-            this.rightPage.setTable(null, List.of(), List.of(), List.of(), 0, 0, null);
+            this.rightPage.setTable(null, List.of(), List.of(), List.of(), 0, 0);
         } else {
             this.rightPage.setTable(result.tableId(), result.gridItems(), result.childTables(), result.introItems(),
-                    result.parsedCount(), result.totalCount(), result.logRef());
+                    result.parsedCount(), result.totalCount());
             if (this.viewModel.isNavigationTargetValid(result.tableId())) {
                 JournalClientConnection.scenario().requestVisibleDefault(result.tableId());
             }
@@ -949,7 +1000,8 @@ public class ArchaeologyJournalScreen extends UiScreen {
         }
 
         // 日志工具栏可见性
-        boolean logToolbarVisible = isLogToolbarVisible();
+        boolean logToolbarVisible = isLogToolbarVisible()
+                && JournalClientConnection.log().status() == JournalMirror.Status.READY;
         if (!logToolbarVisible && this.rightPage.getLogPanel().isBatchSelectionMode()) {
             this.rightPage.getLogPanel().setBatchSelectionMode(false);
         }
@@ -961,8 +1013,10 @@ public class ArchaeologyJournalScreen extends UiScreen {
         boolean isLogDetailMode = hasSelectedTable() && this.rightPage.isShowingLogDetail()
                 && this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG;
         applyButtonState(this.rightPage.getLogDetailPanel().getBackButton(), isLogDetailMode, isLogDetailMode);
-        applyButtonState(this.rightPage.getLogDetailPanel().getNoteButton(), isLogDetailMode, isLogDetailMode);
-        applyButtonState(this.rightPage.getLogDetailPanel().getDeleteButton(), isLogDetailMode, isLogDetailMode);
+        applyButtonState(this.rightPage.getLogDetailPanel().getNoteButton(), isLogDetailMode,
+                isLogDetailMode && JournalClientConnection.log().status() == JournalMirror.Status.READY);
+        applyButtonState(this.rightPage.getLogDetailPanel().getDeleteButton(), isLogDetailMode,
+                isLogDetailMode && JournalClientConnection.log().status() == JournalMirror.Status.READY);
         content.syncMembers();
     }
 
@@ -1015,11 +1069,11 @@ public class ArchaeologyJournalScreen extends UiScreen {
         if (tableId == null) {
             return;
         }
-        var history = ArchaeologyJournalLogLocalStore.getState().getTable(tableId);
+        var history = JournalClientConnection.log().summary(tableId);
         int retentionLimit = history != null
-                ? history.getRetentionLimit()
-                : LootTrackingSettings.DEFAULT_LOG_ENTRIES;
-        int entryCount = history != null ? history.getTotalEntryCount() : 0;
+                ? history.retention()
+                : JournalClientConnection.log().totals().limit();
+        int entryCount = history != null ? history.count() : 0;
         Objects.requireNonNull(this.minecraft, "minecraft must not be null while screen is active")
                 .setScreen(new JournalLogRetentionScreen(this, tableId, retentionLimit, entryCount));
     }
@@ -1044,13 +1098,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_message",
                         selectedEntryIds.size()),
                 () -> {
-                    for (int from = 0; from < selectedEntryIds.size();
-                         from += DeleteJournalLogPayload.MAX_BATCH_ENTRIES) {
-                        int to = Math.min(selectedEntryIds.size(),
-                                from + DeleteJournalLogPayload.MAX_BATCH_ENTRIES);
-                        ClientNetwork.sendToServer(DeleteJournalLogPayload.batch(
-                                tableId, selectedEntryIds.subList(from, to)));
-                    }
+                    if (!JournalClientConnection.delete(DeleteJournalLogPayload.batch(tableId, selectedEntryIds))) return;
                     this.rightPage.getLogPanel().setBatchSelectionMode(false);
                     syncButtonState();
                 });
@@ -1068,7 +1116,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.entry_title"),
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.entry_message"),
                 () -> {
-                    ClientNetwork.sendToServer(DeleteJournalLogPayload.entry(tableId, entry.entryId()));
+                    JournalClientConnection.delete(List.of(DeleteJournalLogPayload.entry(tableId, entry.entryId())));
                     this.rightPage.restoreLogSelection(null, false);
                 });
     }
@@ -1079,22 +1127,22 @@ public class ArchaeologyJournalScreen extends UiScreen {
         if (tableId == null) {
             return;
         }
-        var history = ArchaeologyJournalLogLocalStore.getState().getTable(tableId);
-        int count = history != null ? history.getTotalEntryCount() : 0;
+        var history = JournalClientConnection.log().summary(tableId);
+        int count = history != null ? history.count() : 0;
         openDeleteConfirmation(
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.table_title"),
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.table_message",
                         tableId.toString(), count),
-                () -> ClientNetwork.sendToServer(DeleteJournalLogPayload.table(tableId)));
+                () -> JournalClientConnection.delete(List.of(DeleteJournalLogPayload.table(tableId))));
     }
 
     // 二次确认后清空当前玩家的全部日志历史
     private void confirmClearAllLogs() {
-        int count = ArchaeologyJournalLogLocalStore.getState().getTotalEntryCount();
+        int count = JournalClientConnection.log().totals().count();
         openDeleteConfirmation(
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.all_title"),
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.all_message", count),
-                () -> ClientNetwork.sendToServer(DeleteJournalLogPayload.all()));
+                () -> JournalClientConnection.delete(List.of(DeleteJournalLogPayload.all())));
     }
 
     private void openDeleteConfirmation(Component title, Component message, Runnable confirmedAction) {

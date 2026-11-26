@@ -1,51 +1,51 @@
 package com.meteorite.unsuspiciousblock.core.network.journal;
 
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
+import com.meteorite.unsuspiciousblock.core.journal.catalog.CatalogReadSnapshot;
+import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSessionHolder;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
-
-/**
- * 目录同步处理器——管理目录的哈希校验按需同步与全量下发
- */
+/** 按已发布目录身份应答，重载期间只公告可交付的新版本。 */
 public final class JournalCatalogHandler {
-    private JournalCatalogHandler() {
+    private JournalCatalogHandler() {}
+
+    public static void announce(ServerPlayer player) {
+        ArchaeologyJournalServerCatalog.ensureLoaded(player.server);
+        announce(player, ArchaeologyJournalServerCatalog.readSnapshot());
     }
 
-    // 向玩家发送目录哈希（用于按需同步比对）
-    public static void syncCatalogHash(ServerPlayer player) {
-        MinecraftServer server = player.getServer();
-        if (server == null) return;
+    public static void broadcast(MinecraftServer server, long generation) {
+        if (generation != ArchaeologyJournalServerCatalog.currentGenerationId()) return;
+        CatalogReadSnapshot snapshot = ArchaeologyJournalServerCatalog.readSnapshot();
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) announce(player, snapshot);
+    }
 
-        if (!server.isSameThread()) {
-            server.execute(() -> syncCatalogHash(player));
+    private static void announce(ServerPlayer player, CatalogReadSnapshot snapshot) {
+        if (Services.NETWORK.supportsJournal(player)) {
+            Services.NETWORK.sendToPlayer(player, new SyncCatalogHashPayload(snapshot.identity()));
+        }
+    }
+
+    public static void handleRequestCatalog(ServerPlayer player, RequestCatalogPayload request) {
+        if (!(player instanceof ArchaeologyJournalLogSyncSessionHolder holder)) return;
+        var session = holder.unsuspiciousblock$getArchaeologyJournalLogSyncSession();
+        if (!session.catalogTickets().advance(request.ticket())) return;
+        ArchaeologyJournalServerCatalog.ensureLoaded(player.server);
+        CatalogReadSnapshot snapshot = ArchaeologyJournalServerCatalog.readSnapshot();
+        if (!snapshot.identity().equals(request.expected())) {
+            announce(player, snapshot);
             return;
         }
-        ArchaeologyJournalServerCatalog.ensureLoaded(server);
-        String hash = ArchaeologyJournalServerCatalog.computeCatalogHash();
-        if (hash.isEmpty()) return;
-
-        Services.NETWORK.sendToPlayer(player, new SyncCatalogHashPayload(hash));
+        snapshot.enqueue(session.catalog(), request.ticket());
     }
 
-    // 向玩家发送完整目录（客户端请求后调用）
-    public static void syncFullCatalog(ServerPlayer player) {
-        MinecraftServer server = player.getServer();
-        if (server == null) return;
-
-        if (!server.isSameThread()) {
-            server.execute(() -> syncFullCatalog(player));
-            return;
+    public static void tick(ServerPlayer player) {
+        if (player instanceof ArchaeologyJournalLogSyncSessionHolder holder) {
+            holder.unsuspiciousblock$getArchaeologyJournalLogSyncSession().catalog().tick(player);
         }
-        ArchaeologyJournalServerCatalog.ensureLoaded(server);
-        var snapshot = ArchaeologyJournalServerCatalog.readSnapshot();
-        Services.NETWORK.sendToPlayer(player, snapshot.payload());
-    }
-
-    // 处理客户端请求完整目录
-    public static void handleRequestCatalog(ServerPlayer player) {
-        syncFullCatalog(player);
     }
 }

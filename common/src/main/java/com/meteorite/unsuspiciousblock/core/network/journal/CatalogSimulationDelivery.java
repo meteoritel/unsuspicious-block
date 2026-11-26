@@ -4,7 +4,6 @@ import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalSe
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog.ScenarioResult;
 import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog.SubmissionResult;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.ScenarioRequestRejectedPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncCatalogHashPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncScenarioResultPayload;
 
 import java.util.Objects;
@@ -49,10 +48,4 @@ public final class CatalogSimulationDelivery {
         }
     }
 
-    public static void broadcastHash(MinecraftServer server, long generation) {
-        String hash = ArchaeologyJournalServerCatalog.catalogHashFor(generation);
-        if (hash.isEmpty()) return;
-        SyncCatalogHashPayload payload = new SyncCatalogHashPayload(hash);
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) Services.NETWORK.sendToPlayer(player, payload);
-    }
 }

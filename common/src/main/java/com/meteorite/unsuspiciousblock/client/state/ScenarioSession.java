@@ -12,7 +12,6 @@ import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.RecommendationSolver.Outcome;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationInputKey;
-import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestCatalogPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestScenarioCachePayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.ScenarioSelection;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestScenarioSimulationPayload;
@@ -142,6 +141,7 @@ public final class ScenarioSession {
 
     private final Consumer<CustomPacketPayload> send;
     private final LongSupplier clock;
+    private final Runnable refreshCatalog;
     private final long identity = ++sequence;
     private boolean active = true;
     private final Map<ResourceLocation, Long> selectionRevisions = new HashMap<>();
@@ -149,9 +149,10 @@ public final class ScenarioSession {
     /**
      * 连接负责提供发送入口与毫秒时钟，退役时停止提交动作。
      */
-    public ScenarioSession(Consumer<CustomPacketPayload> send, LongSupplier clock) {
+    public ScenarioSession(Consumer<CustomPacketPayload> send, LongSupplier clock, Runnable refreshCatalog) {
         this.send = send;
         this.clock = clock;
+        this.refreshCatalog = refreshCatalog;
     }
 
     /**
@@ -392,7 +393,7 @@ public final class ScenarioSession {
         state.CACHE_QUERIES.put(table.id(), new CacheQuery(query.id(), query.input(), query.params(), query.started(),
                 payload.selectedCached(), true, payload.error()));
         if (payload.error().equals("stale_hash")) {
-            send.accept(new RequestCatalogPayload());
+            refreshCatalog.run();
         }
         presentationChanged(payload.tableId());
     }
@@ -585,7 +586,7 @@ public final class ScenarioSession {
             state.FAILURES.remove(state.FAILURES.keySet().iterator().next());
         }
         if (payload.reason() == ScenarioRequestRejectedPayload.Reason.STALE_HASH) {
-            send.accept(new RequestCatalogPayload());
+            refreshCatalog.run();
         }
         presentationChanged(payload.tableId());
     }

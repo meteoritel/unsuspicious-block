@@ -7,18 +7,15 @@ import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
 
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryItem;
-import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
 import com.meteorite.unsuspiciousblock.client.ui.panel.DetailOverlayPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalLogLocalStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
-import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogQueryIndex;
@@ -54,8 +51,7 @@ import java.util.Set;
  */
 public class JournalViewModel {
 
-    private final ArchaeologyJournalState state;
-    private ArchaeologyJournalLogState logState;
+    private ArchaeologyJournalState state;
     private final Map<ResourceLocation, TableDefinition> catalogDefinitions = new LinkedHashMap<>();
     private final Map<ResourceLocation, ArchaeologyJournalEntry> allViews = new LinkedHashMap<>();
     private final List<ArchaeologyJournalEntry> tableViews = new ArrayList<>();
@@ -78,6 +74,7 @@ public class JournalViewModel {
     private long lastConnectionEpoch;
     private long lastCatalogRevision;
     private long lastNameRevision = -1;
+    private Language lastLanguage;
     private long lastStateRevision;
     private boolean lastReadingReady;
     private long lastLogRevision;
@@ -106,20 +103,20 @@ public class JournalViewModel {
     private final Map<ResourceLocation, String> lowercaseTableNames = new LinkedHashMap<>();
     private final Map<ResourceLocation, List<JournalSearchQuery.LowercaseItem>> lowercaseTableItems =
             new LinkedHashMap<>();
+    private long nameOverrideRevision = Long.MIN_VALUE;
     private long nameCacheRevision = Long.MIN_VALUE;
     private Language nameCacheLanguage;
 
-    public JournalViewModel(ArchaeologyJournalState state) {
-        this.state = state;
-        this.logState = ArchaeologyJournalLogLocalStore.getState();
+    public JournalViewModel() {
+        this.state = ArchaeologyJournalClientState.getState();
     }
 
     public void initRevisions() {
         this.lastConnectionEpoch = JournalClientConnection.epoch();
+        this.lastLogRevision = JournalClientConnection.log().sortRevision();
         this.lastCatalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         this.lastStateRevision = ArchaeologyJournalClientState.getStateRevision();
         this.lastReadingReady = ArchaeologyJournalClientState.isReadingReady();
-        this.lastLogRevision = ArchaeologyJournalLogLocalStore.getRevision();
     }
 
     /**
@@ -338,34 +335,49 @@ public class JournalViewModel {
         this.loadedCatalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
     }
 
-    public boolean refreshIfNeeded() {
+    /** 需要从根 Screen 提交的最小刷新范围。 */
+    public enum Refresh { NONE, ORDER, CONTENT }
+
+    public Refresh refreshIfNeeded() {
         long epoch = JournalClientConnection.epoch();
+        long logRevision = JournalClientConnection.log().sortRevision();
         boolean connectionChanged = epoch != this.lastConnectionEpoch;
         this.lastConnectionEpoch = epoch;
         long catalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         long stateRevision = ArchaeologyJournalClientState.getStateRevision();
-        long logRevision = ArchaeologyJournalLogLocalStore.getRevision();
         boolean readingReady = ArchaeologyJournalClientState.isReadingReady();
         boolean readinessChanged = readingReady != lastReadingReady;
         lastReadingReady = readingReady;
         long names = ClientLootTableLanguageStore.revision();
-        boolean namesChanged = names != this.lastNameRevision;
+        Language language = Language.getInstance();
+        boolean namesChanged = names != this.lastNameRevision || language != lastLanguage;
         this.lastNameRevision = names;
-        if (!namesChanged && !connectionChanged && !readinessChanged && catalogRevision == this.lastCatalogRevision && stateRevision == this.lastStateRevision
-                && logRevision == this.lastLogRevision) return false;
-        if (connectionChanged || readinessChanged || stateRevision != this.lastStateRevision) {
+        this.lastLanguage = language;
+        boolean logChanged = logRevision != this.lastLogRevision;
+        this.lastLogRevision = logRevision;
+        boolean progressChanged = stateRevision != this.lastStateRevision;
+        boolean catalogChanged = catalogRevision != this.lastCatalogRevision;
+        if (connectionChanged || progressChanged) {
             this.lastStateRevision = stateRevision;
-            this.state.copyFrom(ArchaeologyJournalClientState.getState());
+            this.state = ArchaeologyJournalClientState.getState();
         }
-        if (connectionChanged || catalogRevision != this.lastCatalogRevision) {
+        if (connectionChanged || catalogChanged) {
             this.lastCatalogRevision = catalogRevision;
             reloadCatalog();
         }
-        if (connectionChanged || logRevision != this.lastLogRevision) {
-            this.lastLogRevision = logRevision;
-            this.logState = ArchaeologyJournalLogLocalStore.getState();
+        if (connectionChanged || readinessChanged || namesChanged || catalogChanged || progressChanged) {
+            return Refresh.CONTENT;
         }
-        return true;
+        if (logChanged && this.currentSortOrder == CatalogSorter.SortOrder.UPDATE_TIME) return Refresh.ORDER;
+        return Refresh.NONE;
+    }
+
+    /** 排序变化沿相同表和父路径恢复选中行。 */
+    public void reorderRows() {
+        ResourceLocation table = selectedTableId();
+        List<ResourceLocation> path = table == null ? List.of() : this.rowMetadata.get(this.selectedIndex).parentPath();
+        rebuildTableRows();
+        this.selectedIndex = resolveSelectedIndex(table, path);
     }
 
     /**
@@ -379,8 +391,7 @@ public class JournalViewModel {
         int unlocked = 0;
         for (Map.Entry<ResourceLocation, TableDefinition> entry : this.catalogDefinitions.entrySet()) {
             ResourceLocation id = entry.getKey();
-            ArchaeologyJournalEntry view = ArchaeologyJournalEntry.of(id, entry.getValue(), this.state.getTable(id),
-                    this.logState.getTable(id));
+            ArchaeologyJournalEntry view = ArchaeologyJournalEntry.of(id, entry.getValue(), this.state.getTable(id));
             this.allViews.put(id, view);
             if (view.unlocked()) unlocked++;
         }
@@ -501,15 +512,17 @@ public class JournalViewModel {
 
     // —— 名称缓存与排序 ——
 
-    // 让名称缓存与当前"目录定义版本 + 客户端语言"对齐；不一致就整体失效重建。
-    // 服务端补充译名不推进 catalogRevision，因此匹配文本最多滞后到下一次目录或语言变化（显示本身仍走实时 Component）。
+    // 目录定义、客户端语言与服务端补充表名各自推进版本。
     private void syncNameCaches() {
         Language language = Language.getInstance();
-        if (this.nameCacheRevision == this.loadedCatalogRevision && this.nameCacheLanguage == language) {
+        long overrides = ClientLootTableLanguageStore.revision();
+        if (this.nameCacheRevision == this.loadedCatalogRevision && this.nameCacheLanguage == language
+                && this.nameOverrideRevision == overrides) {
             return;
         }
         this.nameCacheRevision = this.loadedCatalogRevision;
         this.nameCacheLanguage = language;
+        this.nameOverrideRevision = overrides;
         this.displayNameTexts.clear();
         this.lowercaseTableNames.clear();
         this.lowercaseTableItems.clear();
@@ -712,7 +725,7 @@ public class JournalViewModel {
         int parsedCount = progress == null ? 0 : (int) required.stream()
                 .filter(item -> progress.isItemUnlocked(item.signature())).count();
         return new BuildGridResult(selected.id(), List.copyOf(gridItems), List.copyOf(childEntries), introItems,
-                parsedCount, required.size(), selected.logRef());
+                parsedCount, required.size());
     }
 
     // 表子树物品闭包：CatalogQueryIndex.subtreeItems 是一次整棵子树的 DFS，选中表与每个直接子表各调一次；
@@ -824,6 +837,6 @@ public class JournalViewModel {
     public record BuildGridResult(ResourceLocation tableId, List<ItemGridPanel.GridItem> gridItems,
                                   List<ItemGridPanel.ChildTableEntry> childTables,
                                   List<DetailOverlayPanel.IntroItem> introItems,
-                                  int parsedCount, int totalCount, ArchaeologyEntryLogRef logRef) {
+                                  int parsedCount, int totalCount) {
     }
 }

@@ -23,7 +23,7 @@ import java.util.UUID;
 /**
  * 考古日志的历史记录状态——记录每个战利品表的首次解锁时间与所有发掘日志条目。
  * 每张表对应一个 TableLogHistory，内含 firstUnlockMeta 与 ExcavationLogEntry 列表。
- * 提供服务端-客户端双向同步支持（配合 sync 子包中的 ArchaeologyJournalLogSyncSession）。
+ * 由服务端存储和日志会话共享。
  */
 public final class ArchaeologyJournalLogState {
     private static final String TABLES_TAG = "tables";
@@ -53,39 +53,6 @@ public final class ArchaeologyJournalLogState {
     // 检查是否没有任何历史记录
     public boolean isEmpty() {
         return this.tables.isEmpty();
-    }
-
-    public int getTotalEntryCount() {
-        int total = 0;
-        for (TableLogHistory history : this.tables.values()) {
-            total += history.getTotalEntryCount();
-        }
-        return total;
-    }
-
-    // 获取全部表的累计日志数；已被清理或自动淘汰的历史条目仍计入。
-    public long getLifetimeEntryCount() {
-        long total = 0L;
-        for (TableLogHistory history : this.tables.values()) {
-            long count = history.getLifetimeEntryCount();
-            if (Long.MAX_VALUE - total < count) {
-                return Long.MAX_VALUE;
-            }
-            total += count;
-        }
-        return total;
-    }
-
-    // 获取指定来源的累计日志数，例如刷拭或战利品箱。
-    public long getLifetimeEntryCount(LootSourceType source) {
-        if (source == null) return 0L;
-        long total = 0L;
-        for (TableLogHistory history : this.tables.values()) {
-            long count = history.getLifetimeEntryCount(source);
-            if (Long.MAX_VALUE - total < count) return Long.MAX_VALUE;
-            total += count;
-        }
-        return total;
     }
 
     // 设置（或保留最小）首次解锁时间元数据
@@ -126,16 +93,10 @@ public final class ArchaeologyJournalLogState {
         return this.tables.remove(tableId) != null;
     }
 
-    // 移除指定表中的单条日志；表的首次解锁元数据保持不变
-    public boolean removeEntry(ResourceLocation tableId, UUID entryId) {
-        TableLogHistory history = this.tables.get(tableId);
-        return history != null && history.removeEntry(entryId);
-    }
-
     // 批量移除指定表中的日志条目
-    public int removeEntries(ResourceLocation tableId, Set<UUID> entryIds) {
+    public List<UUID> removeEntries(ResourceLocation tableId, Set<UUID> entryIds) {
         TableLogHistory history = this.tables.get(tableId);
-        return history != null ? history.removeEntries(entryIds) : 0;
+        return history != null ? history.removeEntries(entryIds) : List.of();
     }
 
     // 清空指定表的条目，保留累计数、首次解锁元数据与玩家保留策略
@@ -155,7 +116,9 @@ public final class ArchaeologyJournalLogState {
 
     // 更新单表自动保留上限，并立即淘汰超限的无备注旧条目
     public RetentionUpdateResult setRetentionLimit(ResourceLocation tableId, int limit) {
-        return this.getOrCreateTable(tableId).setRetentionLimit(limit);
+        TableLogHistory history = this.tables.get(tableId);
+        if (history != null) return history.setRetentionLimit(limit);
+        return new RetentionUpdateResult(true, this.getOrCreateTable(tableId).setRetentionLimit(limit).retentionLimit(), List.of());
     }
 
     // 仅保留时间最新的指定数量，带备注条目不受本次批量清理影响
@@ -237,7 +200,7 @@ public final class ArchaeologyJournalLogState {
     }
 
     /** 修改单表自动保留上限后的结果。 */
-    public record RetentionUpdateResult(int retentionLimit, List<UUID> removedEntryIds) {
+    public record RetentionUpdateResult(boolean changed, int retentionLimit, List<UUID> removedEntryIds) {
     }
 
     public static final class TableLogHistory {
@@ -326,25 +289,20 @@ public final class ArchaeologyJournalLogState {
             return entryId != null && this.entries.containsKey(entryId);
         }
 
-        private boolean removeEntry(UUID entryId) {
-            if (entryId == null || this.entries.remove(entryId) == null) {
-                return false;
-            }
-            this.entriesVersion++;
-            return true;
+        /** 通过 UUID 定位条目，避免建立列表副本或遍历历史。 */
+        public @Nullable ExcavationLogEntry getEntry(UUID entryId) {
+            return this.entries.get(entryId);
         }
 
-        private int removeEntries(Set<UUID> entryIds) {
-            if (entryIds == null || entryIds.isEmpty()) {
-                return 0;
+        private List<UUID> removeEntries(Set<UUID> entryIds) {
+            List<UUID> removed = new ArrayList<>();
+            for (UUID entryId : entryIds) {
+                if (this.entries.remove(entryId) != null) removed.add(entryId);
             }
-            int previousSize = this.entries.size();
-            this.entries.keySet().removeIf(entryIds::contains);
-            int removed = previousSize - this.entries.size();
-            if (removed > 0) {
+            if (!removed.isEmpty()) {
                 this.entriesVersion++;
             }
-            return removed;
+            return List.copyOf(removed);
         }
 
         private int clearEntries() {
@@ -415,12 +373,14 @@ public final class ArchaeologyJournalLogState {
         }
 
         private RetentionUpdateResult setRetentionLimit(int limit) {
-            this.retentionLimit = Math.max(1, Math.min(limit, getGlobalMaxEntries()));
+            int previousLimit = this.retentionLimit;
+            this.retentionLimit = Math.clamp(limit, 1, getGlobalMaxEntries());
             List<UUID> removedEntryIds = this.trimEntriesToLimit(this.getEffectiveRetentionLimit());
             if (!removedEntryIds.isEmpty()) {
                 this.entriesVersion++;
             }
-            return new RetentionUpdateResult(this.retentionLimit, removedEntryIds);
+            return new RetentionUpdateResult(previousLimit != this.retentionLimit || !removedEntryIds.isEmpty(),
+                    this.retentionLimit, removedEntryIds);
         }
 
         private List<UUID> pruneToMostRecent(int keepCount) {

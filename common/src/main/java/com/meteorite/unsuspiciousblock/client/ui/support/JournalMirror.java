@@ -1,348 +1,252 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import net.minecraft.resources.ResourceLocation;
 import com.meteorite.unsuspiciousblock.Constants;
-import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
+import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
+import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState.TableLogHistory;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
-import com.meteorite.unsuspiciousblock.core.network.journal.JournalLogSnapshotCodec;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogSnapshotEndPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogSnapshotStartPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogTableChunkPayload;
+import com.meteorite.unsuspiciousblock.core.network.journal.JournalLogSummary.Table;
+import com.meteorite.unsuspiciousblock.core.network.journal.JournalLogSummary.Totals;
+import com.meteorite.unsuspiciousblock.core.network.journal.JournalWireNbt;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestJournalLogPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestJournalLogPayload.Action;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalTransferPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalTransferPayload.Kind;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.Objects;
 import java.util.UUID;
 
-import java.util.function.LongSupplier;
-
-/** 单个连接的日志会话迁移；时间与重同步动作由宿主注入。 */
+/** 已提交日志摘要与正在查看的表。替换历史只在完整快照到达时发生。 */
 public final class JournalMirror {
-    private final ResyncPolicy resyncPolicy;
-    private final Runnable requestSnapshot;
-    private ArchaeologyJournalLogState logState = new ArchaeologyJournalLogState();
-    private @Nullable UUID currentSessionId;
-    private @Nullable PendingSnapshot pendingSnapshot;
-    private final ArrayList<SyncJournalLogPayload> pendingIncrementals = new ArrayList<>();
-    private long lastAppliedSequence;
-    private long revision;
-    private boolean dirty;
-    private boolean initialized;
+    /** 当前所选历史的加载状态。 */
+    public enum Status { IDLE, LOADING, READY, FAILED }
 
-    public JournalMirror(LongSupplier clock, Runnable requestSnapshot) {
-        this.resyncPolicy = new ResyncPolicy(clock);
-        this.requestSnapshot = requestSnapshot;
+    private final JournalTransferAssembly assembly = new JournalTransferAssembly();
+    private Map<ResourceLocation, Table> summaries = new LinkedHashMap<>();
+    private final Map<UUID, ExcavationLogEntry> entries = new LinkedHashMap<>();
+    private Totals totals = Totals.EMPTY;
+    private List<ExcavationLogEntry> history = List.of();
+    private @Nullable ResourceLocation selected;
+    private long committed = -1;
+    private long nextTicket;
+    private long summaryTicket;
+    private long historyTicket;
+    private long deadline;
+    private long summaryRevision;
+    private long sortRevision;
+    private long detailRevision;
+    private boolean waitingSummary = true;
+    private boolean recovered;
+    private boolean failed;
+    private boolean unavailable;
+    private Status status = Status.IDLE;
+
+    public Table summary(ResourceLocation tableId) { return summaries.get(tableId); }
+    public Totals totals() { return totals; }
+    public long summaryRevision() { return summaryRevision; }
+    public long sortRevision() { return sortRevision; }
+    public long detailRevision() { return detailRevision; }
+    public long committed() { return committed; }
+    public Status status() { return status; }
+
+    /** 当前查询已提交的历史，按服务端插入顺序读取。 */
+    public List<ExcavationLogEntry> history() { return history; }
+
+    public boolean isDisplaying(ResourceLocation tableId) { return tableId.equals(selected); }
+
+    /** 改变可见历史，切表立即废弃旧票据。 */
+    public void select(@Nullable ResourceLocation tableId) {
+        if (Objects.equals(selected, tableId)) return;
+        selected = tableId;
+        assembly.cancelHistory();
+        entries.clear();
+        history = List.of();
+        detailRevision++;
+        recovered = false;
+        if (tableId == null) {
+            status = Status.IDLE;
+            if (historyTicket != 0) send(Action.CLOSE, ++nextTicket, null);
+            historyTicket = 0;
+        } else if (unavailable) {
+            status = Status.FAILED;
+        } else if (failed) {
+            recover();
+        } else {
+            requestHistory();
+        }
     }
 
-    public ArchaeologyJournalLogState current() {
-        return logState.copy();
-    }
+    void receive(JournalTransferPayload piece) {
+        Kind kind = piece.kind();
+        if (failed || switch (kind) {
+            case LOG_SUMMARY -> !waitingSummary || piece.ticket() != summaryTicket || piece.revision() < committed;
+            case LOG_HISTORY -> selected == null || piece.ticket() != historyTicket || status != Status.LOADING;
+            case LOG_CHANGE -> piece.total() != 0 && (piece.revision() <= committed || waitingSummary);
+            default -> throw new IllegalArgumentException("非日志事务");
+        }) return;
 
-    public long revision() {
-        return revision;
-    }
-
-    public boolean isDirty() {
-        return dirty;
-    }
-
-    public void markSaved() {
-        dirty = false;
-    }
-
-    public void restore(ArchaeologyJournalLogState state) {
-        logState = state;
-        initialized = true;
-        revision++;
-    }
-
-    public void advance() {
-        if (!initialized) {
+        if (piece.total() == 0) {
+            if (kind == Kind.LOG_HISTORY) {
+                assembly.clear();
+                status = Status.FAILED;
+                detailRevision++;
+            } else {
+                fail();
+            }
             return;
         }
-        tryCommitSnapshot();
-        flushPending();
-    }
-
-    // 开始接收服务端权威分片快照，旧状态在完整校验前继续可用
-    public void beginSnapshot(SyncJournalLogSnapshotStartPayload payload) {
-        if (payload.sequence() < lastAppliedSequence) {
-            return;
-        }
-        pendingSnapshot = new PendingSnapshot(payload.sessionId(), payload.sequence(),
-                payload.snapshotId(), payload.tableCount());
-        pendingIncrementals.clear();
-    }
-
-    // 接收单表压缩数据的一片；完整单表立即解码进待提交状态
-    public void acceptChunk(SyncJournalLogTableChunkPayload payload) {
-        PendingSnapshot snapshot = pendingSnapshot;
-        if (snapshot == null || snapshot.mismatches(payload.sessionId(), payload.snapshotId())) {
-            requestLogSnapshotWithCooldown();
+        if ((kind == Kind.LOG_CHANGE && piece.revision() != committed + 1)
+                || (kind == Kind.LOG_HISTORY && piece.revision() != committed)) {
+            recover();
             return;
         }
         try {
-            snapshot.add(payload);
-        } catch (RuntimeException exception) {
-            Constants.LOG.warn("接收考古日志快照分片失败，正在请求重同步", exception);
-            requestLogSnapshotWithCooldown();
+            byte[] bytes = assembly.accept(piece, System.currentTimeMillis());
+            if (bytes == null) return;
+            long nbtBudget = kind == Kind.LOG_HISTORY ? kind.maxBytes() + 1024L * 1024 : kind.maxBytes() * 2L;
+            CompoundTag tag = JournalWireNbt.decode(bytes, nbtBudget);
+            switch (kind) {
+                case LOG_SUMMARY -> applyBaseline(piece.revision(), tag);
+                case LOG_HISTORY -> applyHistory(tag);
+                case LOG_CHANGE -> applyChange(piece, tag);
+                default -> throw new IllegalArgumentException("非日志事务");
+            }
+        } catch (IOException | RuntimeException exception) {
+            Constants.LOG.warn(Constants.LOG_TAG + "考古日志事务无法应用", exception);
+            recover();
         }
     }
 
-    // 标记分片快照传输结束，完整时原子提交
-    public void endSnapshot(SyncJournalLogSnapshotEndPayload payload) {
-        PendingSnapshot snapshot = pendingSnapshot;
-        if (snapshot == null || snapshot.mismatches(payload.sessionId(), payload.snapshotId())) {
-            requestLogSnapshotWithCooldown();
+    void unavailable() {
+        unavailable = true;
+        fail();
+    }
+
+    void tick() {
+        long now = System.currentTimeMillis();
+        if (waitingSummary && deadline == 0) deadline = now + JournalTransferAssembly.RESPONSE_TIMEOUT_MS;
+        if (!failed && (assembly.expired(now)
+                || !assembly.active() && deadline != 0 && now >= deadline && (waitingSummary || status == Status.LOADING))) {
+            recover();
+        }
+    }
+
+    private void applyBaseline(long revision, CompoundTag tag) {
+        Totals next = Totals.fromTag(tag.getCompound("totals"));
+        CompoundTag tables = tag.getCompound("tables");
+        Map<ResourceLocation, Table> nextSummaries = new LinkedHashMap<>();
+        for (String key : tables.getAllKeys()) {
+            nextSummaries.put(ResourceLocation.parse(key), Table.fromTag(tables.getCompound(key)));
+        }
+        summaries = nextSummaries;
+        sortRevision++;
+        commitTotals(next, revision);
+        waitingSummary = false;
+        if (status == Status.LOADING) deadline = System.currentTimeMillis() + JournalTransferAssembly.RESPONSE_TIMEOUT_MS;
+        else recovered = false;
+    }
+
+    private void applyHistory(CompoundTag tag) {
+        if (!ResourceLocation.parse(tag.getString("table")).equals(selected)) {
+            throw new IllegalArgumentException("考古日志历史表与请求不一致");
+        }
+        List<ExcavationLogEntry> next = tag.contains("history", Tag.TAG_COMPOUND)
+                ? TableLogHistory.fromTag(tag.getCompound("history")).getEntries() : List.of();
+        entries.clear();
+        next.forEach(entry -> entries.put(entry.entryId(), entry));
+        publishHistory();
+        status = Status.READY;
+        recovered = false;
+    }
+
+    private void applyChange(JournalTransferPayload piece, CompoundTag tag) {
+        Totals next = Totals.fromTag(tag.getCompound("totals"));
+        if (tag.getBoolean("all")) {
+            if (tag.getBoolean("clear_tables")) summaries.clear();
+            else summaries.replaceAll((id, summary) -> summary.emptyEntries());
+            sortRevision++;
+            if (status == Status.READY && !entries.isEmpty()) {
+                entries.clear();
+                publishHistory();
+            }
+        } else if (tag.contains("table", Tag.TAG_STRING)) {
+            ResourceLocation tableId = ResourceLocation.parse(tag.getString("table"));
+            Table summary = tag.contains("summary", Tag.TAG_COMPOUND) ? Table.fromTag(tag.getCompound("summary")) : null;
+            boolean detail = piece.ticket() == historyTicket && tableId.equals(selected) && status == Status.READY;
+            ExcavationLogEntry updated = detail && tag.contains("entry", Tag.TAG_COMPOUND)
+                    ? ExcavationLogEntry.fromTag(tag.getCompound("entry")) : null;
+            if (detail && tag.contains("entry", Tag.TAG_COMPOUND) && updated == null) {
+                throw new IllegalArgumentException("考古日志条目无效");
+            }
+            List<UUID> removed = new ArrayList<>();
+            if (detail) {
+                for (Tag id : tag.getList("removed", Tag.TAG_INT_ARRAY)) removed.add(NbtUtils.loadUUID(id));
+            }
+            Table previous = summary == null ? summaries.remove(tableId) : summaries.put(tableId, summary);
+            if (!Objects.equals(previous == null ? null : previous.latest(), summary == null ? null : summary.latest())) {
+                sortRevision++;
+            }
+            if (detail && (summary == null || tag.getBoolean("clear") || updated != null || !removed.isEmpty())) {
+                if (summary == null || tag.getBoolean("clear")) entries.clear();
+                removed.forEach(entries::remove);
+                if (updated != null) entries.put(updated.entryId(), updated);
+                publishHistory();
+            }
+        }
+        commitTotals(next, piece.revision());
+    }
+
+    private void commitTotals(Totals next, long revision) {
+        if (!next.equals(totals)) summaryRevision++;
+        totals = next;
+        committed = revision;
+    }
+
+    private void publishHistory() {
+        history = List.copyOf(entries.values());
+        detailRevision++;
+    }
+
+    private void recover() {
+        if (recovered) {
+            fail();
             return;
         }
-        snapshot.ended = true;
-        tryCommitSnapshot();
+        recovered = true;
+        failed = false;
+        assembly.clear();
+        waitingSummary = true;
+        summaryTicket = ++nextTicket;
+        deadline = System.currentTimeMillis() + JournalTransferAssembly.RESPONSE_TIMEOUT_MS;
+        send(Action.SUMMARY, summaryTicket, null);
+        if (selected != null) requestHistory();
     }
 
-    // 接受服务端下发的增量更新
-    public void applyUpdate(SyncJournalLogPayload payload) {
-        if (!initialized) {
-            pendingIncrementals.add(payload);
-            return;
-        }
-        if (pendingSnapshot != null) {
-            if (pendingSnapshot.sessionId.equals(payload.sessionId())) {
-                pendingIncrementals.add(payload);
-            } else {
-                requestLogSnapshotWithCooldown();
-            }
-            return;
-        }
-        flushPending();
-        // sessionId 不匹配（currentSessionId 非空且与服务端不一致）→ 会话失效，请求快照重同步
-        if (currentSessionId != null && !currentSessionId.equals(payload.sessionId())) {
-            requestLogSnapshotWithCooldown();
-            return;
-        }
-        // sequence 过期或重复 → 静默跳过（正常情况）
-        if (payload.sequence() <= lastAppliedSequence) {
-            return;
-        }
-
-        boolean changed = applyIncremental(logState, payload);
-        if (changed) {
-            currentSessionId = payload.sessionId();
-            lastAppliedSequence = payload.sequence();
-            revision++;
-            dirty = true;
-        } else {
-            if (currentSessionId == null) {
-                currentSessionId = payload.sessionId();
-            }
-            lastAppliedSequence = Math.max(lastAppliedSequence, payload.sequence());
-        }
+    private void requestHistory() {
+        status = Status.LOADING;
+        detailRevision++;
+        historyTicket = ++nextTicket;
+        deadline = System.currentTimeMillis() + JournalTransferAssembly.RESPONSE_TIMEOUT_MS;
+        send(Action.HISTORY, historyTicket, selected);
     }
 
-    // 请求日志快照重同步（带限流），用于 sessionId 不匹配时的恢复路径
-    // 清除本地 sessionId 后向服务端请求全新快照，使客户端重新对齐服务端权威状态
-    private void requestLogSnapshotWithCooldown() {
-        if (!resyncPolicy.tryRequest()) {
-            return;
-        }
-        // 清除旧会话状态，允许后续快照重建基线
-        currentSessionId = null;
-        lastAppliedSequence = 0L;
-        pendingSnapshot = null;
-        pendingIncrementals.clear();
-        requestSnapshot.run();
+    private void fail() {
+        assembly.clear();
+        failed = true;
+        status = Status.FAILED;
+        detailRevision++;
     }
 
-    private void flushPending() {
-        if (pendingSnapshot != null || pendingIncrementals.isEmpty()) {
-            return;
-        }
-
-        // 处理排队的增量更新（卫语句已保证此时队列非空）
-        ArrayList<SyncJournalLogPayload> sortedIncrementals = new ArrayList<>(pendingIncrementals);
-        sortedIncrementals.sort(Comparator.comparingLong(SyncJournalLogPayload::sequence));
-        boolean anyChanged = false;
-        for (SyncJournalLogPayload payload : sortedIncrementals) {
-            if (!shouldAcceptUpdate(currentSessionId, lastAppliedSequence, payload)) {
-                continue;
-            }
-            if (applyIncremental(logState, payload)) {
-                currentSessionId = payload.sessionId();
-                lastAppliedSequence = payload.sequence();
-                anyChanged = true;
-            } else {
-                if (currentSessionId == null) {
-                    currentSessionId = payload.sessionId();
-                }
-                lastAppliedSequence = Math.max(lastAppliedSequence, payload.sequence());
-            }
-        }
-        if (anyChanged) {
-            revision++;
-            dirty = true;
-        }
-        pendingIncrementals.clear();
-    }
-
-    private void tryCommitSnapshot() {
-        PendingSnapshot snapshot = pendingSnapshot;
-        if (snapshot == null || !snapshot.ended || !initialized) {
-            return;
-        }
-        if (!snapshot.isComplete()) {
-            Constants.LOG.warn("考古日志快照不完整: 收到 {}/{} 张表",
-                    snapshot.completedTables.size(), snapshot.expectedTableCount);
-            requestLogSnapshotWithCooldown();
-            return;
-        }
-        logState = snapshot.state;
-        currentSessionId = snapshot.sessionId;
-        lastAppliedSequence = snapshot.sequence;
-        pendingSnapshot = null;
-        revision++;
-        dirty = true;
-        flushPending();
-    }
-
-    private static boolean shouldAcceptUpdate(@Nullable UUID sessionId, long lastSequence,
-                                              SyncJournalLogPayload payload) {
-        // sessionId 匹配检查：如果当前已有 sessionId，必须与服务端一致
-        if (sessionId != null && !sessionId.equals(payload.sessionId())) {
-            return false;
-        }
-        return payload.sequence() > lastSequence;
-    }
-
-    private static boolean applyIncremental(ArchaeologyJournalLogState state, SyncJournalLogPayload payload) {
-        return switch (payload.action()) {
-            case CLEAR_ALL -> clearAll(state);
-            case CLEAR_TABLE -> payload.tableId() != null && state.removeTable(payload.tableId());
-            case DELETE_ENTRY -> payload.tableId() != null && payload.entryId() != null
-                    && state.removeEntry(payload.tableId(), payload.entryId());
-            case REPLACE_TABLE -> applyReplaceTable(state, payload);
-            case SET_FIRST_UNLOCK_META -> applyFirstUnlockMeta(state, payload);
-            case UPSERT_ENTRY -> applyUpsertEntry(state, payload);
-        };
-    }
-
-    private static boolean applyReplaceTable(ArchaeologyJournalLogState state, SyncJournalLogPayload payload) {
-        if (payload.tableId() == null) {
-            return false;
-        }
-        state.putTable(payload.tableId(), ArchaeologyJournalLogState.TableLogHistory.fromTag(payload.data().copy()));
-        return true;
-    }
-
-    private static boolean applyFirstUnlockMeta(ArchaeologyJournalLogState state, SyncJournalLogPayload payload) {
-        if (payload.tableId() == null) {
-            return false;
-        }
-        LootSourceType lootSource = payload.lootSource();
-        return state.setFirstUnlockMetaMin(payload.tableId(), lootSource, payload.gameTime(), payload.dayTime());
-    }
-
-    private static boolean applyUpsertEntry(ArchaeologyJournalLogState state, SyncJournalLogPayload payload) {
-        if (payload.tableId() == null) {
-            return false;
-        }
-        return state.upsertEntry(payload.tableId(), ExcavationLogEntry.fromTag(payload.data()));
-    }
-
-    private static boolean clearAll(ArchaeologyJournalLogState state) {
-        if (state.isEmpty()) {
-            return false;
-        }
-        state.clear();
-        return true;
-    }
-
-    /** 一次正在接收的服务端日志快照。 */
-    private static final class PendingSnapshot {
-        private final UUID sessionId;
-        private final long sequence;
-        private final UUID snapshotId;
-        private final int expectedTableCount;
-        private final ArchaeologyJournalLogState state = new ArchaeologyJournalLogState();
-        private final Map<ResourceLocation, ChunkAccumulator> tables = new HashMap<>();
-        private final Set<ResourceLocation> completedTables = new HashSet<>();
-        private int compressedBytes;
-        private boolean ended;
-
-        private PendingSnapshot(UUID sessionId, long sequence, UUID snapshotId, int expectedTableCount) {
-            this.sessionId = sessionId;
-            this.sequence = sequence;
-            this.snapshotId = snapshotId;
-            this.expectedTableCount = expectedTableCount;
-        }
-
-        private boolean mismatches(UUID sessionId, UUID snapshotId) {
-            return !this.sessionId.equals(sessionId) || !this.snapshotId.equals(snapshotId);
-        }
-
-        private void add(SyncJournalLogTableChunkPayload payload) {
-            if (this.completedTables.contains(payload.tableId())) {
-                return;
-            }
-            byte[] chunk = payload.data();
-            this.compressedBytes += chunk.length;
-            if (this.compressedBytes > JournalLogSnapshotCodec.MAX_COMPRESSED_TABLE_BYTES
-                    * Math.clamp(this.expectedTableCount, 1, 16)) {
-                throw new IllegalArgumentException("考古日志快照压缩数据总量超过限制");
-            }
-            ChunkAccumulator accumulator = this.tables.computeIfAbsent(payload.tableId(),
-                    ignored -> new ChunkAccumulator(payload.chunkCount()));
-            byte[] completed = accumulator.add(payload.chunkIndex(), payload.chunkCount(), chunk);
-            if (completed == null) {
-                return;
-            }
-            this.state.putTable(payload.tableId(), JournalLogSnapshotCodec.decode(completed));
-            this.tables.remove(payload.tableId());
-            this.completedTables.add(payload.tableId());
-        }
-
-        private boolean isComplete() {
-            return this.tables.isEmpty() && this.completedTables.size() == this.expectedTableCount;
-        }
-    }
-
-    /** 单张表的定长分片重组器。 */
-    private static final class ChunkAccumulator {
-        private final byte[][] chunks;
-        private int received;
-        private int totalBytes;
-
-        private ChunkAccumulator(int chunkCount) {
-            this.chunks = new byte[chunkCount][];
-        }
-
-        private byte @Nullable [] add(int chunkIndex, int chunkCount, byte[] data) {
-            if (chunkCount != this.chunks.length) {
-                throw new IllegalArgumentException("同一日志表的分片总数不一致");
-            }
-            if (this.chunks[chunkIndex] == null) {
-                this.chunks[chunkIndex] = data;
-                this.received++;
-                this.totalBytes += data.length;
-                if (this.totalBytes > JournalLogSnapshotCodec.MAX_COMPRESSED_TABLE_BYTES) {
-                    throw new IllegalArgumentException("单张日志表压缩数据超过限制");
-                }
-            }
-            if (this.received != this.chunks.length) {
-                return null;
-            }
-            byte[] result = new byte[this.totalBytes];
-            int offset = 0;
-            for (byte[] chunk : this.chunks) {
-                System.arraycopy(chunk, 0, result, offset, chunk.length);
-                offset += chunk.length;
-            }
-            return result;
-        }
+    private static void send(Action action, long ticket, @Nullable ResourceLocation table) {
+        ClientNetwork.sendToServer(new RequestJournalLogPayload(action, ticket, table));
     }
 }

@@ -19,6 +19,7 @@ import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestJournalLogPayload;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
@@ -37,7 +38,8 @@ import net.minecraft.world.inventory.MenuType;
 public class UnsuspiciousBlockFabricClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
-        ModClientLifecycle.install(ClientPlayNetworking::send);
+        ModClientLifecycle.install(ClientPlayNetworking::send,
+                () -> ClientPlayNetworking.canSend(RequestJournalLogPayload.TYPE));
         BlockRenderLayerMap.INSTANCE.putBlocks(RenderType.cutout(),
                 ModBlocks.PURRMINT.get(), ModBlocks.PURRMINT_CROP.get(), ModBlocks.POTTED_PURRMINT.get());
         // 注册按键绑定

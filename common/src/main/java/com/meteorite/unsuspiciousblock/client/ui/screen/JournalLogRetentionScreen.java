@@ -24,6 +24,9 @@ import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.UUID;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalLogEditResultPayload;
 
 /**
  * 日志保留与一次性清理设置；数值草稿在明确提交时按对应业务范围校验。
@@ -31,6 +34,7 @@ import java.util.List;
 public final class JournalLogRetentionScreen extends UiThemedScreen {
     private static final String PREFIX = "screen.unsuspiciousblock.archaeology_journal.log_retention.";
     private final Screen parent;
+    private @Nullable UUID pending;
     private final ResourceLocation tableId;
     private final UiChildren<UiInputTarget> content = new UiChildren<>();
     private final UiInputScope scope = new UiInputScope(content);
@@ -142,12 +146,39 @@ public final class JournalLogRetentionScreen extends UiThemedScreen {
             validationMessage = Component.translatable(PREFIX + "invalid_number");
             return;
         }
-        if (value < minimum) {
-            validationMessage = Component.translatable(PREFIX + "invalid_number");
+        int limit = JournalClientConnection.log().totals().limit();
+        if (value < minimum || value > limit) {
+            validationMessage = Component.translatable(PREFIX + "invalid_range", limit);
             return;
         }
-        ClientNetwork.sendToServer(new UpdateJournalLogRetentionPayload(tableId, action, value));
-        onClose();
+        UUID id = UUID.randomUUID();
+        var operation = action == UpdateJournalLogRetentionPayload.Action.SET_LIMIT
+                ? JournalLogEditResultPayload.Operation.RETENTION : JournalLogEditResultPayload.Operation.PRUNE;
+        if (!JournalClientConnection.expectEdit(id, operation, tableId, this::finish)) return;
+        pending = id;
+        apply.setEnabled(false);
+        prune.setEnabled(false);
+        ClientNetwork.sendToServer(new UpdateJournalLogRetentionPayload(id, tableId, action, value));
+    }
+
+    private void finish(JournalLogEditResultPayload result) {
+        pending = null;
+        apply.setEnabled(true);
+        prune.setEnabled(true);
+        if (result.result() == JournalLogEditResultPayload.Result.APPLIED) {
+            validationMessage = result.operation() == JournalLogEditResultPayload.Operation.RETENTION
+                    ? Component.translatable(PREFIX + "limit_saved", result.retention(), result.removedCount())
+                    : Component.translatable(PREFIX + "pruned", result.removedCount());
+        } else {
+            validationMessage = JournalClientConnection.editMessage(result);
+        }
+    }
+
+    @Override
+    public void removed() {
+        JournalClientConnection.abandonEdit(pending);
+        pending = null;
+        super.removed();
     }
 
     @Override

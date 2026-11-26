@@ -8,6 +8,9 @@ import net.neoforged.neoforge.network.PacketDistributor;
 public class NeoForgeNetworkHelper implements INetworkHelper {
 
     @Override
+    public boolean supportsJournal(ServerPlayer player) { return true; }
+
+    @Override
     public <T extends CustomPacketPayload> void sendToPlayer(ServerPlayer player, T payload) {
         PacketDistributor.sendToPlayer(player, payload);
     }

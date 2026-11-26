@@ -1,46 +1,61 @@
 package com.meteorite.unsuspiciousblock.core.network.journal;
 
-import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalStateHolder;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalStateIncrementalPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalStatePayload;
+import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSessionHolder;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestJournalStateFullPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalTransferPayload.Kind;
+import net.minecraft.nbt.CompoundTag;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.util.Set;
 
-/** 玩家进度状态同步处理器 */
+/** 发布个人进度基线和实际更新的表，发布顺序随连接延续。 */
 public final class JournalStateHandler {
     private JournalStateHandler() {}
 
-    // 向玩家增量同步考古日记状态（仅发送变更的表进度）
+    /** 受理脏表作为一个进度修订。 */
     public static void syncState(ServerPlayer player) {
-        if (!(player instanceof ArchaeologyJournalStateHolder holder)) return;
-
+        if (!Services.NETWORK.supportsJournal(player) || !(player instanceof ArchaeologyJournalStateHolder holder)
+                || !(player instanceof ArchaeologyJournalLogSyncSessionHolder sessions)) return;
         ArchaeologyJournalState state = holder.unsuspiciousblock$getArchaeologyJournalState();
         Set<ResourceLocation> dirty = state.drainDirtyTables();
-        if (dirty.isEmpty()) {
-            return;
-        }
-        CompoundTag changedTag = state.writeDirtyTablesToTag(dirty);
-        Services.NETWORK.sendToPlayer(player,
-                new SyncJournalStateIncrementalPayload(state.getRevision(), changedTag));
+        if (dirty.isEmpty()) return;
+        var session = sessions.unsuspiciousblock$getArchaeologyJournalLogSyncSession();
+        Kind kind = Kind.PROGRESS_CHANGE;
+        session.progress().offer(kind, state.getRevision(), session.progressTickets().latest(),
+                JournalWireNbt.encode(state.writeDirtyTablesToTag(dirty), kind.maxBytes()));
     }
 
-    // 向玩家全量同步考古日记状态（用于玩家加入/重连场景）
+    /** 登录、破坏性更新及恢复均以当前修订覆盖既有队列。 */
     public static void syncStateFull(ServerPlayer player) {
-        if (!(player instanceof ArchaeologyJournalStateHolder holder)) return;
-
+        if (!Services.NETWORK.supportsJournal(player) || !(player instanceof ArchaeologyJournalStateHolder holder)
+                || !(player instanceof ArchaeologyJournalLogSyncSessionHolder sessions)) return;
         ArchaeologyJournalState state = holder.unsuspiciousblock$getArchaeologyJournalState();
-        state.drainDirtyTables(); // 清空脏标记，避免后续增量同步重复发送
-        Services.NETWORK.sendToPlayer(player,
-                new SyncJournalStatePayload(state.getRevision(), state.toTag()));
+        var session = sessions.unsuspiciousblock$getArchaeologyJournalLogSyncSession();
+        state.drainDirtyTables();
+        CompoundTag document = state.writeDirtyTablesToTag(state.getTables().keySet());
+        Kind kind = Kind.PROGRESS_BASELINE;
+        session.progress().clear();
+        session.progress().offer(kind, state.getRevision(), session.progressTickets().latest(),
+                JournalWireNbt.encode(document, kind.maxBytes()));
     }
 
-    // 处理客户端主动请求的全量重同步（revision 间隙恢复路径）
-    public static void handleRequestFull(ServerPlayer player) {
-        syncStateFull(player);
+    /** 新票据的全量响应覆盖在途旧数据。 */
+    public static void handleRequestFull(ServerPlayer player, RequestJournalStateFullPayload request) {
+        if (player instanceof ArchaeologyJournalLogSyncSessionHolder holders
+                && holders.unsuspiciousblock$getArchaeologyJournalLogSyncSession().progressTickets().advance(request.ticket())) {
+            syncStateFull(player);
+        }
+    }
+
+    /** 重生后继承旧队列并交付尚未发布的变化。 */
+    public static void tick(ServerPlayer player) {
+        if (player instanceof ArchaeologyJournalLogSyncSessionHolder holders) {
+            syncState(player);
+            holders.unsuspiciousblock$getArchaeologyJournalLogSyncSession().progress().tick(player);
+        }
     }
 }

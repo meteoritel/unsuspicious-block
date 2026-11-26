@@ -17,7 +17,7 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.JournalBookBackground;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalFormatHelper;
 import com.meteorite.meteosuikit.api.text.TextScroll;
-import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryLogRef;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalMirror;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.support.LogGrouper;
 import com.meteorite.meteosuikit.api.control.UiPaginationState;
@@ -247,12 +247,16 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     }
 
     // 设置日志数据
-    public void setData(@Nullable ArchaeologyEntryLogRef logRef) {
+    private JournalMirror.Status loadStatus = JournalMirror.Status.IDLE;
+
+    public void setLoadStatus(JournalMirror.Status status) {
+        this.loadStatus = status;
+    }
+
+    public void setData(List<ExcavationLogEntry> history) {
         // 日志数据引用
-        ArchaeologyEntryLogRef logRef1 =
-                logRef != null ? logRef : ArchaeologyEntryLogRef.EMPTY;
         this.allEntries.clear();
-        for (ExcavationLogEntry entry : logRef1.logEntries()) {
+        for (ExcavationLogEntry entry : history) {
             this.allEntries.add(new LogEntryState(entry));
         }
         Set<UUID> availableIds = new LinkedHashSet<>();
@@ -374,7 +378,11 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         // 重置按钮悬停缓存（在 renderEntry 中重新填充）
         if (this.displayRows.isEmpty()) {
             guiGraphics.drawString(font,
-                    Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_empty"),
+                    Component.translatable(switch (loadStatus) {
+                        case IDLE, LOADING -> "screen.unsuspiciousblock.archaeology_journal.log_loading";
+                        case FAILED -> "screen.unsuspiciousblock.archaeology_journal.log_load_failed";
+                        case READY -> "screen.unsuspiciousblock.archaeology_journal.log_empty";
+                    }),
                     leftX, listStartY, MUTED_COLOR, false);
             return;
         }

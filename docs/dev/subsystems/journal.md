@@ -123,7 +123,7 @@ classDiagram
 ### 5.3 增量同步 (`revision` + 脏表)
 
 - 业务修改仅调用 `markDirty(tableId)` 登记脏表，**不立即递增 `revision`**。
-- 实际构造增量同步包时调用 `drainDirtyTables()`，收集脏表并统一执行一次 `revision + 1`，确保单次业务操作内的多次解锁不引起版本号跳跃，使客户端能通过 `incomingRevision > lastNotifiedRevision + 1` 准确检测丢包间隙。
+- 发布时调用 `drainDirtyTables()`，将同批脏表合为一个修订。客户端按已提交修订识别间隙。
 - 客户端 `mergeFromIncremental` 采用**服务端权威语义**，直接以增量条目覆盖本地条目；全量重置（`clear` / `removeTable`）同样递增 `revision` 并触发全量下发。
 
 ## 6. 日志存储与追踪链路
@@ -140,25 +140,25 @@ flowchart TD
     Join["onPlayerJoined(player)"] --> Restore["1. restoreLogState (按已提交索引恢复日志并回放排队变更)"]
     Restore --> Migrate["2. JournalDataMigrationManager.migratePlayerData (旧 NBT 日志提交至分片 + 对齐旧进度签名)"]
     Migrate --> Net["3. ArchaeologyJournalNetwork.syncPreparedPlayerOnJoin"]
-    Net --> S1["JournalLogHandler.syncLogSnapshot (日志分片快照)"]
-    S1 --> S2["JournalCatalogHandler.syncCatalogHash (目录 SHA-256)"]
-    S2 --> S3["LootTableManagementHandler.sync (管理索引与自定义表名)"]
+    Net --> S1["JournalLogHandler.syncLogSummary (个人日志摘要)"]
+    S1 --> S2["JournalCatalogHandler.announce (共享目录身份)"]
+    S2 --> S3["LootTableManagementHandler.syncNames (补充表名)"]
     S3 --> S4["JournalStateHandler.syncStateFull (全量解锁进度)"]
     S4 --> S5["JournalCompletionRewardChecker.checkAndRewardAll"]
     S5 --> S6["ArchaeologyChallengeChecker.checkAndGrantAll"]
 ```
 
-奖励与成就补发置于全量进度同步之后，确保客户端目录已准备就绪并能正确弹出提示。
+服务端在准备进度基线后检查奖励与成就。客户端等待目录提交后解析完成奖励的表名，目录传输失败时使用表 ID 路径。
 
 ### 运行时同步场景一览
 
 | 同步类型 | 触发时机 | 同步机制 |
 |---|---|---|
 | 进度增量 | `drainDirtyTables` | `revision` + 脏表增量（客户端检测到间隙后主动申请全量） |
-| 进度全量 | 登录 / 数据包重载 / 清空 | 一次性全量进度下发 |
-| 目录按需 | 哈希不匹配 | 客户端收到哈希通知且本地不一致时请求全量目录 |
-| 日志分片 | 登录 / 客户端重同步请求 | 会话 ID + 递增序号分片下发 |
-| 日志删除 | 玩家确认删除 | 服务端校验后回传权威表日志及结果回执 |
+| 进度基线 | 登录、重同步、重置或移除表 | 有界分片，完整后按修订提交 |
+| 共享目录 | 目录公告或场景状态过期 | 按身份获取冻结字节，核对代次、修订和摘要后提交 |
+| 日志摘要和详情 | 登录、打开或切换日志页 | 登录发布统计和表摘要，选中表历史按查询票据与修订提交 |
+| 日志编辑 | 保存备注、删除或修改保留策略 | 回执关联请求和已接受的日志修订，客户端直接应用增删及统计 |
 | 扫描结果 | 可疑解析仪扫描 | 单次扫描汇总与目标坐标下发 |
 | 完成奖励 | 某张表解锁度达 100% | 发放古代金币并发送一次性完成通知 |
 
@@ -166,7 +166,7 @@ flowchart TD
 
 ## 8. 客户端接入概要
 
-客户端由 `JournalClientConnection` 管理连接代次与本地日志镜像实例化，`ArchaeologyJournalClientState` 对 UI 暴露目录、进度与通知回调（详见[客户端与 GUI](client-ui.md)）。
+客户端由 `JournalClientConnection` 管理连接代次、已提交的日志摘要和选中表历史，`ArchaeologyJournalClientState` 对 UI 暴露目录、进度与通知回调（详见[客户端与 GUI](client-ui.md)）。
 
 ## 9. 扩展点：新增追踪来源
 

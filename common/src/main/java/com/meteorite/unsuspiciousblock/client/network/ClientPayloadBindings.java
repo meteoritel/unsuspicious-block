@@ -5,7 +5,6 @@ import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalLogLocalStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.LootTableManagementClientState;
 import com.meteorite.unsuspiciousblock.core.network.ModPayloads;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -21,17 +20,11 @@ import java.util.function.Consumer;
  */
 public final class ClientPayloadBindings {
     private static final List<Binding<?>> BINDINGS = List.of(
-            bind(ModPayloads.SYNC_ARCHAEOLOGY_CATALOG, ArchaeologyJournalClientState::receiveCatalog),
             bind(ModPayloads.SYNC_CATALOG_HASH, ArchaeologyJournalClientState::receiveCatalogHash),
             bind(ModPayloads.SYNC_LOOT_TABLE_MANAGEMENT, LootTableManagementClientState::receive),
             bind(ModPayloads.SYNC_LOOT_MANAGEMENT_DATA, LootTableManagementClientState::receiveData),
-            bind(ModPayloads.SYNC_JOURNAL_STATE, ArchaeologyJournalClientState::receiveState),
-            bind(ModPayloads.SYNC_JOURNAL_STATE_INCREMENTAL, ArchaeologyJournalClientState::receiveStateIncremental),
-            bind(ModPayloads.SYNC_JOURNAL_LOG, ArchaeologyJournalLogLocalStore::applyUpdate),
-            bind(ModPayloads.SYNC_JOURNAL_LOG_SNAPSHOT_START, ArchaeologyJournalLogLocalStore::beginSnapshot),
-            bind(ModPayloads.SYNC_JOURNAL_LOG_TABLE_CHUNK, ArchaeologyJournalLogLocalStore::applySnapshotChunk),
-            bind(ModPayloads.SYNC_JOURNAL_LOG_SNAPSHOT_END, ArchaeologyJournalLogLocalStore::completeSnapshot),
-            bind(ModPayloads.JOURNAL_LOG_DELETE_RESULT, ArchaeologyJournalClientState::receiveLogDeleteResult),
+            bind(ModPayloads.JOURNAL_TRANSFER, JournalClientConnection::receiveTransfer),
+            bind(ModPayloads.JOURNAL_LOG_EDIT_RESULT, JournalClientConnection::receiveEditResult),
             bind(ModPayloads.SYNC_CAT_FAVOR, HandOfCatClientState::receive),
             bind(ModPayloads.SYNC_READER_SCAN_RESULT, ReaderScanHudState::receive),
             bind(ModPayloads.SYNC_ENCHANTMENT_REVEAL_LIST, EnchantmentRevealClientState::receive),

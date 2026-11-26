@@ -26,6 +26,7 @@ import net.minecraft.client.renderer.item.ItemProperties;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import java.util.function.Consumer;
+import java.util.function.BooleanSupplier;
 import com.meteorite.unsuspiciousblock.client.network.ClientNetwork;
 
 import java.util.ArrayList;
@@ -43,8 +44,8 @@ public final class ModClientLifecycle {
     }
 
     /** 安装客户端能力，网络发送由当前 Loader 提供。 */
-    public static void install(Consumer<CustomPacketPayload> packetSender) {
-        ClientNetwork.install(packetSender);
+    public static void install(Consumer<CustomPacketPayload> packetSender, BooleanSupplier journalCapability) {
+        ClientNetwork.install(packetSender, journalCapability);
         JournalClientConnection.registerConnectionReset(ClientLootTableLanguageStore::resetOnDisconnect);
         JournalClientConnection.registerConnectionReset(LootTableManagementClientState::reset);
         JournalClientConnection.registerConnectionReset(HandOfCatClientState::reset);
@@ -60,8 +61,8 @@ public final class ModClientLifecycle {
             }
             return SuspiciousReaderItem.getScanLevel(stack) * READER_SCAN_LEVEL_MODEL_STEP;
         });
-        ArchaeologyJournalUi.registerOpener((state, itemId) ->
-                Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(state, itemId)));
+        ArchaeologyJournalUi.registerOpener(itemId ->
+                Minecraft.getInstance().setScreen(new ArchaeologyJournalScreen(itemId)));
         ArchaeologyJournalClientState.registerTableUnlockNotifier(JournalUnlockToast::addTableUnlocks);
         ArchaeologyJournalClientState.registerTableCompletionNotifier(JournalUnlockToast::addTableCompletion);
         ArchaeologyJournalClientState.registerItemUnlockNotifier((names, icons) -> {
@@ -71,7 +72,7 @@ public final class ModClientLifecycle {
             }
             JournalUnlockToast.addItemUnlocks(entries);
         });
-        ArchaeologyJournalClientState.registerLogDeleteNotifier(message -> {
+        JournalClientConnection.registerLogEditNotifier(message -> {
             if (Minecraft.getInstance().player != null) {
                 Minecraft.getInstance().player.displayClientMessage(message, true);
             }

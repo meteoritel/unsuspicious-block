@@ -26,6 +26,18 @@ public final class JournalUiPreferencesStore {
     private static volatile Path loadedPath;
     private static final JournalLocalPersistence.PendingWrites writes = new JournalLocalPersistence.PendingWrites();
     private static volatile boolean dirty;
+    private static boolean earlyReading;
+    private static final Set<String> earlyFields = new HashSet<>();
+    private static final Set<ResourceLocation> earlyFavoriteToggles = new HashSet<>();
+
+    private static final String SIMULATION = "simulationPreferences";
+    private static final String FAVORITES = "favorites";
+    private static final String CATALOG_SORT = "lastCatalogSortOrder";
+    private static final String CATALOG_DESCENDING = "lastCatalogSortDescending";
+    private static final String CATALOG_HIDE_LOCKED = "lastCatalogHideLocked";
+    private static final String CATALOG_SEARCH = "lastCatalogSearchText";
+    private static final String LOG_SORT = "lastLogSortDescending";
+    private static final String LOG_GROUP = "lastLogGroupMode";
     private static JournalReadingState readingState = JournalReadingState.empty();
     private static boolean writable = true;
     private static CompoundTag simulationPreferences = new CompoundTag();
@@ -60,6 +72,7 @@ public final class JournalUiPreferencesStore {
         while (simulationPreferences.size() > 1024) {
             simulationPreferences.remove(simulationPreferences.getAllKeys().iterator().next());
         }
+        if (loadedPath == null) earlyFields.add(SIMULATION);
         dirty = true;
     }
 
@@ -69,6 +82,7 @@ public final class JournalUiPreferencesStore {
     /** 保存同一次捕获的阅读目标，自动排除批选。 */
     public static synchronized void rememberReadingState(JournalReadingState state) {
         readingState = state.persistent();
+        if (loadedPath == null) earlyReading = true;
         dirty = true;
     }
 
@@ -79,6 +93,7 @@ public final class JournalUiPreferencesStore {
 
     public static synchronized void setLastCatalogSortOrder(@Nullable CatalogSorter.SortOrder order) {
         lastCatalogSortOrder = order;
+        if (loadedPath == null) earlyFields.add(CATALOG_SORT);
         dirty = true;
     }
 
@@ -88,6 +103,7 @@ public final class JournalUiPreferencesStore {
 
     public static synchronized void setLastCatalogSortDescending(boolean descending) {
         lastCatalogSortDescending = descending;
+        if (loadedPath == null) earlyFields.add(CATALOG_DESCENDING);
         dirty = true;
     }
 
@@ -97,11 +113,13 @@ public final class JournalUiPreferencesStore {
 
     public static synchronized void setLastCatalogHideLocked(boolean hideLocked) {
         lastCatalogHideLocked = hideLocked;
+        if (loadedPath == null) earlyFields.add(CATALOG_HIDE_LOCKED);
         dirty = true;
     }
 
     public static synchronized void setLastCatalogSearchText(@Nullable String text) {
         lastCatalogSearchText = text == null ? "" : text;
+        if (loadedPath == null) earlyFields.add(CATALOG_SEARCH);
         dirty = true;
     }
 
@@ -153,6 +171,7 @@ public final class JournalUiPreferencesStore {
 
     public static synchronized void setLastLogSortDescending(boolean descending) {
         lastLogSortDescending = descending;
+        if (loadedPath == null) earlyFields.add(LOG_SORT);
         dirty = true;
     }
 
@@ -163,6 +182,7 @@ public final class JournalUiPreferencesStore {
 
     public static synchronized void setLastLogGroupMode(@Nullable LogGrouper.GroupMode mode) {
         lastLogGroupMode = mode;
+        if (loadedPath == null) earlyFields.add(LOG_GROUP);
         dirty = true;
     }
 
@@ -177,6 +197,8 @@ public final class JournalUiPreferencesStore {
             copy.remove(id);
         }
         favorites = Set.copyOf(copy);
+        if (loadedPath == null && !earlyFavoriteToggles.add(id)) earlyFavoriteToggles.remove(id);
+        if (loadedPath == null) earlyFields.add(FAVORITES);
         dirty = true;
     }
 
@@ -203,6 +225,9 @@ public final class JournalUiPreferencesStore {
         simulationPreferences = new CompoundTag();
         resetPreferences();
         dirty = false;
+        earlyFields.clear();
+        earlyFavoriteToggles.clear();
+        earlyReading = false;
     }
 
     static synchronized void loadCurrentPath(Path path) {
@@ -220,7 +245,30 @@ public final class JournalUiPreferencesStore {
         writable = result.successful();
         if (!writable) return;
         try {
-            applyTag(JournalReadingStateCodec.migrate(result.tag()));
+            CompoundTag tag = JournalReadingStateCodec.migrate(result.tag());
+            CompoundTag early = snapshot();
+            JournalReadingState reading = readingState;
+            for (String field : earlyFields) {
+                if (field.equals(SIMULATION) || field.equals(FAVORITES)) continue;
+                Tag value = early.get(field);
+                if (value != null) tag.put(field, value);
+                else tag.remove(field);
+            }
+            if (earlyFields.contains(SIMULATION)) {
+                tag.put(SIMULATION, tag.getCompound(SIMULATION).merge(early.getCompound(SIMULATION)));
+            }
+            applyTag(tag);
+            if (earlyReading) readingState = reading;
+            if (!earlyFavoriteToggles.isEmpty()) {
+                Set<ResourceLocation> merged = new HashSet<>(favorites);
+                for (ResourceLocation id : earlyFavoriteToggles) {
+                    if (!merged.add(id)) merged.remove(id);
+                }
+                favorites = Set.copyOf(merged);
+            }
+            earlyFields.clear();
+            earlyFavoriteToggles.clear();
+            earlyReading = false;
         } catch (IllegalArgumentException exception) {
             writable = false;
             Constants.LOG.warn("[{}] 笔记 UI 偏好格式无法读取，保留源文件: {}", Constants.MOD_ID, path, exception);
@@ -238,36 +286,37 @@ public final class JournalUiPreferencesStore {
     }
 
     private static void applyTag(CompoundTag tag) {
-        resetPreferences();
+        lastCatalogSortOrder = null;
+        lastLogGroupMode = null;
         readingState = JournalReadingStateCodec.read(tag);
-        simulationPreferences = tag.getCompound("simulationPreferences").copy();
-        if (tag.contains("lastCatalogSortOrder", Tag.TAG_STRING)) {
+        simulationPreferences = tag.getCompound(SIMULATION).copy();
+        if (tag.contains(CATALOG_SORT, Tag.TAG_STRING)) {
             try {
-                lastCatalogSortOrder = CatalogSorter.SortOrder.valueOf(tag.getString("lastCatalogSortOrder"));
+                lastCatalogSortOrder = CatalogSorter.SortOrder.valueOf(tag.getString(CATALOG_SORT));
             } catch (IllegalArgumentException ignored) {
                 lastCatalogSortOrder = null;
             }
         }
-        if (tag.contains("lastCatalogSortDescending", Tag.TAG_BYTE)) {
-            lastCatalogSortDescending = tag.getBoolean("lastCatalogSortDescending");
+        if (tag.contains(CATALOG_DESCENDING, Tag.TAG_BYTE)) {
+            lastCatalogSortDescending = tag.getBoolean(CATALOG_DESCENDING);
         }
-        if (tag.contains("lastCatalogHideLocked", Tag.TAG_BYTE)) {
-            lastCatalogHideLocked = tag.getBoolean("lastCatalogHideLocked");
+        if (tag.contains(CATALOG_HIDE_LOCKED, Tag.TAG_BYTE)) {
+            lastCatalogHideLocked = tag.getBoolean(CATALOG_HIDE_LOCKED);
         }
-        if (tag.contains("lastCatalogSearchText", Tag.TAG_STRING)) {
-            lastCatalogSearchText = tag.getString("lastCatalogSearchText");
+        if (tag.contains(CATALOG_SEARCH, Tag.TAG_STRING)) {
+            lastCatalogSearchText = tag.getString(CATALOG_SEARCH);
         }
-        if (tag.contains("lastLogSortDescending", Tag.TAG_BYTE)) {
-            lastLogSortDescending = tag.getBoolean("lastLogSortDescending");
+        if (tag.contains(LOG_SORT, Tag.TAG_BYTE)) {
+            lastLogSortDescending = tag.getBoolean(LOG_SORT);
         }
-        if (tag.contains("lastLogGroupMode", Tag.TAG_STRING)) {
+        if (tag.contains(LOG_GROUP, Tag.TAG_STRING)) {
             try {
-                lastLogGroupMode = LogGrouper.GroupMode.valueOf(tag.getString("lastLogGroupMode"));
+                lastLogGroupMode = LogGrouper.GroupMode.valueOf(tag.getString(LOG_GROUP));
             } catch (IllegalArgumentException ignored) {
                 lastLogGroupMode = null;
             }
         }
-        ListTag favoriteList = tag.getList("favorites", Tag.TAG_STRING);
+        ListTag favoriteList = tag.getList(FAVORITES, Tag.TAG_STRING);
         Set<ResourceLocation> loadedFavorites = new HashSet<>();
         for (Tag entry : favoriteList) {
             ResourceLocation id = ResourceLocation.tryParse(entry.getAsString());
@@ -281,22 +330,22 @@ public final class JournalUiPreferencesStore {
     private static CompoundTag snapshot() {
         CompoundTag tag = new CompoundTag();
         JournalReadingStateCodec.write(tag, readingState);
-        tag.put("simulationPreferences", simulationPreferences.copy());
+        tag.put(SIMULATION, simulationPreferences.copy());
         if (lastCatalogSortOrder != null) {
-            tag.putString("lastCatalogSortOrder", lastCatalogSortOrder.name());
+            tag.putString(CATALOG_SORT, lastCatalogSortOrder.name());
         }
-        tag.putBoolean("lastCatalogSortDescending", lastCatalogSortDescending);
-        tag.putBoolean("lastCatalogHideLocked", lastCatalogHideLocked);
-        tag.putString("lastCatalogSearchText", lastCatalogSearchText);
-        tag.putBoolean("lastLogSortDescending", lastLogSortDescending);
+        tag.putBoolean(CATALOG_DESCENDING, lastCatalogSortDescending);
+        tag.putBoolean(CATALOG_HIDE_LOCKED, lastCatalogHideLocked);
+        tag.putString(CATALOG_SEARCH, lastCatalogSearchText);
+        tag.putBoolean(LOG_SORT, lastLogSortDescending);
         if (lastLogGroupMode != null) {
-            tag.putString("lastLogGroupMode", lastLogGroupMode.name());
+            tag.putString(LOG_GROUP, lastLogGroupMode.name());
         }
         ListTag favoritesTag = new ListTag();
         for (ResourceLocation id : favorites) {
             favoritesTag.add(StringTag.valueOf(id.toString()));
         }
-        tag.put("favorites", favoritesTag);
+        tag.put(FAVORITES, favoritesTag);
         return tag;
     }
 

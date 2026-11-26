@@ -52,7 +52,7 @@ public final class UnsuspiciousBlockNeoForgeClient {
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
-            ModClientLifecycle.install(PacketDistributor::sendToServer);
+            ModClientLifecycle.install(PacketDistributor::sendToServer, () -> true);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientTick);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onRenderHand);
             NeoForge.EVENT_BUS.addListener(UnsuspiciousBlockNeoForgeClient::onClientLogout);

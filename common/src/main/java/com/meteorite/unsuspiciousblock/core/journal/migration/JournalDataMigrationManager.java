@@ -5,6 +5,7 @@ import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalSe
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalStateHolder;
+import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSession;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.ArchaeologyLootRuntimeTracker;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
@@ -55,7 +56,7 @@ public final class JournalDataMigrationManager {
         try {
             ArchaeologyJournalLogState migrated = new ArchaeologyJournalLogState();
             migrated.readFrom(legacyTag);
-            session.mergeFromClient(migrated);
+            mergeLegacyLog(session.mirroredState(), migrated);
             Set<ResourceLocation> migratedTables = Set.copyOf(migrated.getTables().keySet());
             if (!JournalLogStorage.persistTablesNow(server, player.getUUID(), migratedTables)) {
                 Constants.LOG.warn("玩家 {} 的旧考古日志尚未完整落盘，将保留源 NBT 等待重试",
@@ -68,6 +69,28 @@ public final class JournalDataMigrationManager {
         } catch (RuntimeException exception) {
             Constants.LOG.error("玩家 {} 的旧考古日志迁移失败，源 NBT 已保留",
                     player.getGameProfile().getName(), exception);
+        }
+    }
+
+    private static void mergeLegacyLog(ArchaeologyJournalLogState persisted, ArchaeologyJournalLogState legacy) {
+        for (var entry : legacy.getTables().entrySet()) {
+            ResourceLocation tableId = entry.getKey();
+            ArchaeologyJournalLogState.TableLogHistory legacyHistory = entry.getValue();
+            // 合并首次解锁时间（取最小值）
+            if (legacyHistory.getFirstUnlockedGameTime() != null) {
+                persisted.setFirstUnlockMetaMin(tableId,
+                        legacyHistory.getFirstUnlockLootSource(),
+                        legacyHistory.getFirstUnlockedGameTime(),
+                        legacyHistory.getFirstUnlockedDayTime() != null
+                                ? legacyHistory.getFirstUnlockedDayTime()
+                                : legacyHistory.getFirstUnlockedGameTime());
+            }
+            // 合并发掘条目
+            for (ExcavationLogEntry logEntry : legacyHistory.getEntries()) {
+                if (!persisted.containsEntry(tableId, logEntry.entryId())) {
+                    persisted.upsertEntry(tableId, logEntry);
+                }
+            }
         }
     }
 

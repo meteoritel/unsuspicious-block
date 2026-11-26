@@ -37,8 +37,8 @@ flowchart LR
 flowchart TD
     S2C["收到 S2C Payload"] --> Bind["ClientPayloadBindings"]
     Bind --> Conn["JournalClientConnection (按原连接入队，客户端 tick 应用)"]
-    Conn --> JState["ArchaeologyJournalClientState (目录哈希、进度增量间隙恢复、解锁通知)"]
-    Conn --> LState["ArchaeologyJournalLogLocalStore / JournalMirror (日志分片快照与增量)"]
+    Conn --> JState["ArchaeologyJournalClientState (目录与进度事务、解锁通知)"]
+    Conn --> LState["JournalMirror (摘要和选中表历史)"]
     Conn --> OState["各专属 ClientState (猫族、扫描汇总、附魔揭示、按需模拟)"]
     Tick["客户端 tick"] --> Work["按键轮询、扫描寿命与目标聚焦、状态清理"]
     Disc["切换世界 / 断开连接"] --> Reset["JournalClientConnection 保存旧路径 → 推进 epoch 并复位状态"]
@@ -49,8 +49,8 @@ flowchart TD
 | 类 | 职责 |
 |---|---|
 | `ModClientLifecycle` | 双端共用的安装（Tooltip 桥、语言存储、淘洗表现、笔记打开器、通知回调）、tick 驱动与断连复位 |
-| `ArchaeologyJournalClientState` | 服务端目录与玩家进度的客户端只读模型，以及解锁/完成/删除结果通知分发 |
-| `JournalClientConnection` | 管理当前连接 `epoch`、日记本地镜像、场景会话与偏好加载，按连接身份应用报文并丢弃迟到旧包 |
+| `ArchaeologyJournalClientState` | 服务端目录与玩家进度的客户端只读模型，以及解锁和完成通知分发 |
+| `JournalClientConnection` | 管理当前连接 `epoch`、日志视图、编辑回执、场景会话与偏好加载，按连接身份应用报文并丢弃迟到旧包 |
 | `ScenarioSession` / `ScenarioTableSnapshot` | 连接内场景动作所有者与单表读取快照；草稿版本、局部失效与发现可见性见[笔记 GUI 内部机制](../internals/journal-ui-internals.md#4-场景条件页与文档动作) |
 | `JournalUiPreferencesStore` | 按存档与玩家隔离持久化 UI 偏好和类型化阅读投影（`journal_ui_preferences.dat`） |
 | `CatFavorHud` / `SuspiciousReaderHud` | 猫之恩惠 HUD；可疑解析仪扫描汇总与准星目标详情 HUD |
@@ -74,10 +74,10 @@ flowchart TD
 
 | 状态类 | 职责与生命周期 |
 |---|---|
-| `ArchaeologyJournalClientState` | 持有当前连接的目录、结构、进度、哈希与同步状态；`receiveCatalogHash` 比对不一致时请求全量目录；全量同步首次不弹 Toast，增量同步检测到 `incomingRevision > lastNotifiedRevision + 1` 时按 2 秒冷却请求全量重同步（`detectAndNotifyUnlocks` 仅对追踪目录内表触发） |
+| `ArchaeologyJournalClientState` | 提交当前连接的目录和进度事务，跟踪公告和已提交进度修订。首次进度基线静默，之后按已提交的解锁变化通知。 |
 | `JournalUiPreferencesStore` | 管理排序、搜索、收藏、分组、持久阅读投影与连接内目录状态；切换连接先冻结并保存旧路径待写数据，再恢复默认值并加载新世界数据 |
 | `ScenarioSession` | 由连接创建并退役，维护选择、按输入结果缓存、请求票据与推荐草稿；接收与超时在客户端 tick 推进 |
-| `ArchaeologyJournalLogLocalStore` / `JournalMirror` | 管理分片快照重组、序号递增增量合并与本地镜像持久化 |
+| `JournalMirror` | 重组、提交日志摘要与选中表历史，按序应用服务端变更 |
 | `LootTableManagementClientState` | 持有服务端战利品表索引、权限与自定义表名内存快照，断连时 `reset()` 清空 |
 | `ClientLootTableLanguageStore` | 组合游戏资源语言、服务端内存表名与动态语言补充 |
 | `SuspiciousReaderClientState` / `ReaderScanHudState` | 解析仪扫描等级切换、整批扫描汇总、目标聚焦与描边过期清理 |

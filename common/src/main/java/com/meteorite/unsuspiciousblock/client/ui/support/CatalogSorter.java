@@ -85,7 +85,10 @@ public final class CatalogSorter {
             timestampComparator = timestampComparator.reversed();
         }
         return Comparator
-                .comparing((ArchaeologyJournalEntry entry) -> entry.logRef().latestLogUpdateTimestamp(),
+                .comparing((ArchaeologyJournalEntry entry) -> {
+                            var summary = JournalClientConnection.log().summary(entry.id());
+                            return summary == null ? null : summary.latest();
+                        },
                         Comparator.nullsLast(timestampComparator))
                 .thenComparing(entry -> !"minecraft".equals(entry.id().getNamespace()))
                 .thenComparing(entry -> entry.id().getNamespace())

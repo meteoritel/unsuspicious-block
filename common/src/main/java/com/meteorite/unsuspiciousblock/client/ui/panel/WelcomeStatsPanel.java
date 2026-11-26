@@ -16,24 +16,16 @@ import com.meteorite.meteosuikit.api.render.UiIcon;
 import net.minecraft.client.Minecraft;
 import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalLogLocalStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalFormatHelper;
-import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalLogState;
-import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
-import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.world.GameTimeFormatHelper;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 考古笔记分类首页的信息面板，负责汇总并渲染玩家统计与最近发现。
@@ -89,13 +81,12 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
         int rightColumnX = contentX + columnWidth + COLUMN_GAP;
         int firstRowY = firstSeparatorY + 10;
 
-        ArchaeologyJournalLogState logState = ArchaeologyJournalLogLocalStore.getState();
         drawMetricCard(graphics, font, contentX, firstRowY, columnWidth,
                 "screen.unsuspiciousblock.archaeology_journal.welcome.stat.lifetime_entries",
                 Long.toString(this.lifetimeEntries));
         drawMetricCard(graphics, font, rightColumnX, firstRowY, columnWidth,
                 "screen.unsuspiciousblock.archaeology_journal.welcome.stat.chest_opens",
-                Long.toString(logState.getLifetimeEntryCount(LootSourceType.LOOT_CONTAINER)));
+                Long.toString(JournalClientConnection.log().totals().containers()));
         drawMetricCard(graphics, font, contentX, firstRowY + 20, columnWidth,
                 "screen.unsuspiciousblock.archaeology_journal.welcome.stat.current_entries",
                 Integer.toString(this.currentEntries));
@@ -193,37 +184,32 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
 
     private void refreshSnapshot() {
         long epoch = JournalClientConnection.epoch();
-        long logRevision = ArchaeologyJournalLogLocalStore.getRevision();
+        long logRevision = JournalClientConnection.log().summaryRevision();
         long catalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
         if (epoch == this.lastConnectionEpoch && logRevision == this.lastLogRevision && catalogRevision == this.lastCatalogRevision) {
             return;
         }
 
-        ArchaeologyJournalLogState logState = ArchaeologyJournalLogLocalStore.getState();
-        this.lifetimeEntries = logState.getLifetimeEntryCount(LootSourceType.ARCHAEOLOGY);
-        this.currentEntries = logState.getTotalEntryCount();
-        this.notedEntries = logState.getTables().values().stream()
-                .mapToInt(ArchaeologyJournalLogState.TableLogHistory::getNotedEntryCount)
-                .sum();
-
-        LatestEntry latest = findLatestEntry(logState);
+        var totals = JournalClientConnection.log().totals();
+        this.lifetimeEntries = totals.archaeology();
+        this.currentEntries = totals.count();
+        this.notedEntries = totals.noted();
+        var latest = totals.latest();
         if (latest == null) {
             this.latestRecord = Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.welcome.none");
             this.latestItems = List.of();
         } else {
             int day = GameTimeFormatHelper.fromTime(
-                    latest.entry().lastUpdatedGameTime(), latest.entry().lastUpdatedDayTime()).day();
+                    latest.updated().gameTime(), latest.updated().dayTime()).day();
             TableDefinition definition = ArchaeologyJournalClientState.getCatalog().get(latest.tableId());
             Component tableName = definition != null
                     ? definition.displayName()
                     : Component.literal(latest.tableId().getPath().replace('_', ' '));
             this.latestRecord = Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.welcome.latest_record_value", day, tableName);
-            Map<String, Integer> lootMap = latest.entry().actualLoot().isEmpty()
-                    ? latest.entry().expectedLoot() : latest.entry().actualLoot();
             ArrayList<ItemStack> itemStacks = new ArrayList<>();
-            for (var loot : JournalFormatHelper.sortedLootEntries(lootMap)) {
+            for (var loot : JournalFormatHelper.sortedLootEntries(latest.loot())) {
                 ItemStack stack = JournalFormatHelper.createLootStack(loot.getKey(), loot.getValue());
                 if (stack != null && !stack.isEmpty()) {
                     itemStacks.add(stack);
@@ -235,31 +221,6 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
         this.lastConnectionEpoch = epoch;
         this.lastLogRevision = logRevision;
         this.lastCatalogRevision = catalogRevision;
-    }
-
-    private static final Comparator<ExcavationLogEntry> RECENCY = Comparator
-            .comparingLong(ExcavationLogEntry::lastUpdatedGameTime)
-            .thenComparingLong(ExcavationLogEntry::lastUpdatedDayTime)
-            .thenComparingLong(ExcavationLogEntry::createdGameTime)
-            .thenComparingLong(ExcavationLogEntry::createdDayTime)
-            .thenComparing(ExcavationLogEntry::entryId);
-
-    @Nullable
-    private static LatestEntry findLatestEntry(ArchaeologyJournalLogState logState) {
-        LatestEntry latest = null;
-        for (Map.Entry<ResourceLocation, ArchaeologyJournalLogState.TableLogHistory> table
-                : logState.getTables().entrySet()) {
-            for (ExcavationLogEntry entry : table.getValue().getEntries()) {
-                if (entry.tableStack() != null && !entry.tableStack().isEmpty()
-                        && !table.getKey().equals(entry.tableStack().getFirst())) {
-                    continue;
-                }
-                if (latest == null || RECENCY.compare(entry, latest.entry()) > 0) {
-                    latest = new LatestEntry(table.getKey(), entry);
-                }
-            }
-        }
-        return latest;
     }
 
     private static void drawMetricCard(GuiGraphics graphics, Font font, int x, int y, int width,
@@ -278,8 +239,5 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
                                             int x, int y, int width, int color) {
         String rendered = TextScroll.trimToWidth(font, text.getString(), width);
         graphics.drawString(font, rendered, x + (width - font.width(rendered)) / 2, y, color, false);
-    }
-
-    private record LatestEntry(ResourceLocation tableId, ExcavationLogEntry entry) {
     }
 }

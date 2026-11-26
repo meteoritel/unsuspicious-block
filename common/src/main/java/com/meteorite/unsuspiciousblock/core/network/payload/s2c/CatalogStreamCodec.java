@@ -35,6 +35,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.catalog.UnknownReason;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.FunctionObservationSummary;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ObservedFunctionChain;
 import com.meteorite.unsuspiciousblock.core.loottable.signature.LootResultSignature;
+import io.netty.handler.codec.DecoderException;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -158,13 +159,13 @@ final class CatalogStreamCodec {
         String type = buf.readUtf();
         int simulationCount = buf.readVarInt();
 
-        int childCount = buf.readVarInt();
+        int childCount = readCount(buf);
         List<ResourceLocation> childTables = new ArrayList<>(childCount);
         for (int i = 0; i < childCount; i++) {
             childTables.add(buf.readResourceLocation());
         }
 
-        int itemCount = buf.readVarInt();
+        int itemCount = readCount(buf);
         List<ItemEntry> items = new ArrayList<>(itemCount);
         for (int i = 0; i < itemCount; i++) {
             ResourceLocation itemId = buf.readResourceLocation();
@@ -176,7 +177,7 @@ final class CatalogStreamCodec {
             if (signature == null) {
                 signature = LootResultSignature.plain(itemId);
             }
-            int pathCount = buf.readVarInt();
+            int pathCount = readCount(buf);
             List<LootAcquisitionPath> paths = new ArrayList<>(pathCount);
             for (int k = 0; k < pathCount; k++) {
                 paths.add(readPath(buf));
@@ -189,14 +190,14 @@ final class CatalogStreamCodec {
                     signature, paths, injected, scenarioRefs, origins, observedFunctions));
         }
 
-        int childProbabilityCount = buf.readVarInt();
+        int childProbabilityCount = readCount(buf);
         List<ChildTableEntry> childProbabilities = new ArrayList<>(childProbabilityCount);
         for (int i = 0; i < childProbabilityCount; i++) {
             childProbabilities.add(new ChildTableEntry(
                     buf.readResourceLocation(), readProbability(buf), readScenarioRefs(buf),
                     readConditionList(buf)));
         }
-        int branchCount = buf.readVarInt();
+        int branchCount = readCount(buf);
         List<ScenarioBranch> branches = new ArrayList<>(branchCount);
         for (int index = 0; index < branchCount; index++) {
             branches.add(new ScenarioBranch(
@@ -292,6 +293,15 @@ final class CatalogStreamCodec {
                 readLuckGate(buf), List.of(), readFunctionList(buf));
     }
 
+    static int readCount(RegistryFriendlyByteBuf buf) {
+        int count = buf.readVarInt();
+        // 每个元素至少消费一个字节。限制一次预分配，同时允许目录整体跨片。
+        if (count < 0 || count > buf.readableBytes() || count > 262_144) {
+            throw new DecoderException("考古目录列表超出解码预算");
+        }
+        return count;
+    }
+
     private static void writeScenarioRefs(RegistryFriendlyByteBuf buf, List<ScenarioRef> refs) {
         buf.writeVarInt(refs.size());
         for (ScenarioRef ref : refs) {
@@ -301,7 +311,7 @@ final class CatalogStreamCodec {
     }
 
     private static List<ScenarioRef> readScenarioRefs(RegistryFriendlyByteBuf buf) {
-        int count = buf.readVarInt();
+        int count = readCount(buf);
         List<ScenarioRef> refs = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             refs.add(new ScenarioRef(buf.readUtf(), readProbability(buf)));
@@ -371,7 +381,7 @@ final class CatalogStreamCodec {
     }
 
     private static List<PathHint> readPathHints(RegistryFriendlyByteBuf buf) {
-        int count = buf.readVarInt();
+        int count = readCount(buf);
         List<PathHint> hints = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             byte kind = buf.readByte();
@@ -604,7 +614,7 @@ final class CatalogStreamCodec {
     }
 
     static List<LootConditionInfo> readConditionList(RegistryFriendlyByteBuf buf) {
-        int count = buf.readVarInt();
+        int count = readCount(buf);
         List<LootConditionInfo> conditions = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             conditions.add(readCondition(buf));
@@ -731,7 +741,7 @@ final class CatalogStreamCodec {
     }
 
     private static List<ConditionDisplayRow> readDisplayRows(RegistryFriendlyByteBuf buf) {
-        int count = buf.readVarInt();
+        int count = readCount(buf);
         List<ConditionDisplayRow> rows = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {
             ResourceLocation type = buf.readResourceLocation();
@@ -752,7 +762,7 @@ final class CatalogStreamCodec {
     }
 
     private static Map<String, String> readConditionMetadata(RegistryFriendlyByteBuf buf) {
-        int count = buf.readVarInt();
+        int count = readCount(buf);
         Map<String, String> metadata = new LinkedHashMap<>();
         for (int index = 0; index < count; index++) metadata.put(buf.readUtf(), buf.readUtf());
         return metadata;
@@ -781,13 +791,13 @@ final class CatalogStreamCodec {
     }
 
     static CatalogStructure readStructure(RegistryFriendlyByteBuf buf) {
-        int categoryCount = buf.readVarInt();
+        int categoryCount = readCount(buf);
         List<CatalogCategoryDefinition> categories = new ArrayList<>(categoryCount);
         for (int i = 0; i < categoryCount; i++) {
             categories.add(new CatalogCategoryDefinition(buf.readResourceLocation(), buf.readUtf(),
                     buf.readUtf(), buf.readUtf(), buf.readUtf(), buf.readResourceLocation(), buf.readVarInt()));
         }
-        int rootCount = buf.readVarInt();
+        int rootCount = readCount(buf);
         Map<ResourceLocation, ResourceLocation> roots = new LinkedHashMap<>();
         for (int i = 0; i < rootCount; i++) {
             roots.put(buf.readResourceLocation(), buf.readResourceLocation());

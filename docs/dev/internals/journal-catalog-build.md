@@ -27,16 +27,16 @@ flowchart TD
   - `staticTables()` / `staticTable()` 与 `tracked()` 提供完整声明候选；`completionItems()` 按发布代次的目录层级与物品签名形成完成资格，只接受 `STATIC` 和 `MOD_INTEGRATION` 来源。
   - `displayTable()` 优先读取基准测量，其次读取失败状态，最后使用当前静态表；`displayTables()` 发布这一展示读模型给管理解锁。
   - `baselineCounts()` 依据约束目录和结果 overlay 分别统计待测、已测、失败与机制未解析的表。
-- **Worker 交付与重载生命周期**：玩家查看已解锁表且当前选择为待计算的基准输入时，按需请求加入同一个 `(表, 输入)` 任务并提高其优先级。工作器将等待者汇总交付给 `CatalogSimulationSubmission`，目录校验代次、表哈希和输入后提交共享基准，`CatalogSimulationDelivery` 当即回传单表结果。队列排空后广播完整目录哈希。目录只在有效资源代次匹配时执行模拟。资源切换后构建失败仍可读取旧快照。旧任务退役并结束在途请求，新资源上的根表追踪暂停，已捕获的延迟结算继续按原归属。资源未切换时，旧目录继续支持追踪与模拟。
+- **Worker 交付与重载生命周期**：玩家查看已解锁表且当前选择为待计算的基准输入时，按需请求加入同一个 `(表, 输入)` 任务并提高其优先级。工作器将等待者汇总交付给 `CatalogSimulationSubmission`，目录校验代次、表哈希和输入后提交共享基准，`CatalogSimulationDelivery` 当即回传单表结果。队列排空后公告完整目录身份。目录只在有效资源代次匹配时执行模拟。资源切换后构建失败仍可读取旧快照。旧任务退役并结束在途请求，新资源上的根表追踪暂停，已捕获的延迟结算继续按原归属。资源未切换时，旧目录继续支持追踪与模拟。
 
 ## 2. 冻结目录与按需同步
 
-`CatalogGeneration.readSnapshot()` 是完整目录下发与摘要计算的唯一共享快照接口，封装了当前 `generation`、`overlayRevision`、冻结的目录 Payload 及对应的 SHA-256 摘要：
+`CatalogGeneration.readSnapshot()` 是完整目录下发与摘要计算的唯一共享快照接口，封装了当前 `generation`、`overlayRevision`、冻结线路字节及其 SHA-256 摘要：
 
 - **完整静态成员**：每次冻结以静态目录中的表 ID 取展示视图。首次同步即可取得分类、层级、静态候选和折叠签名的依据，后续测量补充概率和运行时发现。抽样失败的表保留候选与获取规则。
-- **锁与缓存失效**：模拟 overlay 提交与快照捕获共用同一把锁；每次基准结果提交时递增 `overlayRevision` 并失效摘要缓存。`JournalCatalogHandler` 的哈希比对与全量下发共用同一缓存快照（非主线程调用先切回服务端主线程）。
-- **冻结编码与线格式**：快照通过 `SyncArchaeologyCatalogPayload.STREAM_CODEC` 执行一次真实的编码与解码，从而在快照内部提前剥离服务端活谓词与内部约束对象，并固化函数树裁剪结果。SHA-256 摘要直接基于该冻结字节流计算，保证与网络线格式严格同源（协议版本以 `ModPayloads.PROTOCOL_VERSION` 为准，线上限见[网络与同步](../foundation/network.md)）。
-- **两级哈希分工**：每表内容哈希用于单表概率缓存准入与按需请求防伪凭据；完整目录 SHA-256 摘要（包含更新后的表数据与 `options` 代次凭据）用于客户端在登录或广播时判定是否需要全量重拉。
+- **锁与缓存失效**。模拟 overlay 提交与快照捕获使用同一把锁。每次基准提交推进 `overlayRevision`，下次公告或请求时冻结该版本。
+- **冻结线路字节**。`JournalCatalogData` 复用 `CatalogStreamCodec`，编码时固化函数树裁剪。公告和分片使用同一快照。客户端验证代次、修订、票据和内容摘要后提交目录与场景选项。 [网络与同步](../foundation/network.md)
+- **两级摘要**。每表内容哈希用于单表模拟的结果准入，完整目录摘要用于校验共享快照。
 
 ## 3. 调试命令与目录稳定性
 

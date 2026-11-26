@@ -275,7 +275,4 @@ public final class CatalogGeneration {
         return this.readSnapshot;
     }
 
-    public String catalogHash() {
-        return readSnapshot().hash();
-    }
 }

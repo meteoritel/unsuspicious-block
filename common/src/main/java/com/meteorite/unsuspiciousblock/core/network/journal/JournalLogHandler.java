@@ -10,14 +10,14 @@ import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSession;
 import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSessionHolder;
+import com.meteorite.unsuspiciousblock.core.network.payload.c2s.RequestJournalLogPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateJournalLogNotePayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.DeleteJournalLogPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.UpdateJournalLogRetentionPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalLogDeleteResultPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogSnapshotEndPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogSnapshotStartPayload;
-import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncJournalLogTableChunkPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalLogEditResultPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalLogEditResultPayload.Operation;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalLogEditResultPayload.Result;
+import com.meteorite.unsuspiciousblock.core.journal.catalog.ArchaeologyJournalServerCatalog;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.meteorite.unsuspiciousblock.core.world.JournalLogStorage;
 import net.minecraft.resources.ResourceLocation;
@@ -26,11 +26,6 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.LinkedHashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.Objects;
@@ -54,13 +49,7 @@ public final class JournalLogHandler {
         }
         JournalLogMutation.Result result = mutations(player, session).apply(intent);
         if (result.status() != Status.CHANGED) return;
-        UUID sessionId = session.getSessionId();
-        if (sessionId == null) {
-            return;
-        }
-        Services.NETWORK.sendToPlayer(player,
-                SyncJournalLogPayload.setFirstUnlockMeta(sessionId, session.nextSequence(), tableId,
-                        lootSource, intent.gameTime(), intent.dayTime()));
+        publish(session, result);
     }
 
     // 插入或更新挖掘日志条目，未 seed 时排队，已 seed 时增量同步并检测成就
@@ -107,20 +96,7 @@ public final class JournalLogHandler {
                 result.previousLifetimeCount(), result.currentLifetimeCount())) {
             AchievementManager.grantIfNotAlready(player, ModAchievements.CACHE_ME_IF_YOU_CAN);
         }
-        UUID sessionId = session.getSessionId();
-        if (sessionId == null) {
-            return;
-        }
-        ArchaeologyJournalLogState.TableLogHistory table = session.mirroredState().getTable(tableId);
-        if (table != null && (result.added() || !result.removedEntryIds().isEmpty())) {
-            Services.NETWORK.sendToPlayer(player,
-                    SyncJournalLogPayload.replaceTable(
-                            sessionId, session.nextSequence(), tableId, table.toTag()));
-        } else {
-            Services.NETWORK.sendToPlayer(player,
-                    SyncJournalLogPayload.upsertEntry(sessionId, session.nextSequence(), tableId,
-                            Objects.requireNonNull(mutation.entry()).toTag()));
-        }
+        publish(session, mutation);
     }
 
     // 清空全部日志，未 seed 时排队，已 seed 时增量同步
@@ -136,13 +112,7 @@ public final class JournalLogHandler {
         if (session.mirroredState().isEmpty()) {
             return;
         }
-        if (mutations(player, session).apply(new JournalLogMutation.ClearAll()).status() != Status.CHANGED) return;
-        UUID sessionId = session.getSessionId();
-        if (sessionId == null) {
-            return;
-        }
-        long sequence = session.nextSequence();
-        Services.NETWORK.sendToPlayer(player, SyncJournalLogPayload.clearAll(sessionId, sequence));
+        publish(session, mutations(player, session).apply(new JournalLogMutation.ClearAll()));
     }
 
     // 清空指定表的日志，未 seed 时排队，已 seed 时增量同步
@@ -155,167 +125,131 @@ public final class JournalLogHandler {
             session.queueClearTable(tableId);
             return;
         }
-        if (mutations(player, session).apply(new JournalLogMutation.RemoveTable(tableId)).status() != Status.CHANGED) return;
-        UUID sessionId = session.getSessionId();
-        if (sessionId == null) {
-            return;
-        }
-        long sequence = session.nextSequence();
-        Services.NETWORK.sendToPlayer(player, SyncJournalLogPayload.clearTable(sessionId, sequence, tableId));
+        publish(session, mutations(player, session).apply(new JournalLogMutation.RemoveTable(tableId)));
     }
 
-    // 处理玩家自己的单条、批量、当前表或全部日志删除请求
-    public static void handleDeleteLogs(ServerPlayer player, DeleteJournalLogPayload payload) {
+    /** 只在完整同请求批次到齐后执行一次删除。 */
+    public static void handleDeleteLogs(ServerPlayer player, DeleteJournalLogPayload request) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
-        if (session == null || !session.isSeeded() || session.getSessionId() == null) {
-            sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.INVALID, 0);
+        ResourceLocation table = request.tableId();
+        if (session == null || !session.isSeeded()) {
+            reply(player, request.requestId(), Operation.DELETE, table, Result.INVALID, 0, 0, 0);
             return;
         }
-
-        ResourceLocation tableId = payload.tableId();
-        JournalLogMutation.Intent intent;
-        switch (payload.scope()) {
-            case ENTRY -> {
-                if (tableId == null || payload.entryId() == null) {
-                    sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.NOT_FOUND, 0);
-                    return;
-                }
-                intent = new JournalLogMutation.RemoveEntries(tableId, Set.of(payload.entryId()));
+        Set<UUID> batch = Set.of();
+        if (request.scope() == DeleteJournalLogPayload.Scope.BATCH) {
+            if (request.offset() == 0) {
+                session.startDeleteBatch(request, player.server.getTickCount());
             }
-            case BATCH -> {
-                Set<UUID> entryIds = new LinkedHashSet<>(payload.entryIds());
-                if (tableId == null || session.mirroredState().getTable(tableId) == null || entryIds.isEmpty()
-                        || entryIds.size() > DeleteJournalLogPayload.MAX_BATCH_ENTRIES) {
-                    sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.INVALID, 0);
-                    return;
-                }
-                intent = new JournalLogMutation.RemoveEntries(tableId, entryIds);
+            try {
+                batch = session.appendDeleteBatch(request);
+            } catch (IllegalArgumentException exception) {
+                reply(player, request.requestId(), Operation.DELETE, table, Result.INVALID, 0, 0, 0);
+                return;
             }
-            case TABLE -> {
-                if (tableId == null) {
-                    sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.NOT_FOUND, 0);
-                    return;
-                }
-                intent = new JournalLogMutation.ClearEntries(tableId);
-            }
-            case ALL -> intent = new JournalLogMutation.ClearAllEntries();
-            default -> throw new IllegalStateException("Unknown deletion scope: " + payload.scope());
+            if (batch == null) return;
         }
+        JournalLogMutation.Intent intent = switch (request.scope()) {
+            case ENTRY -> new JournalLogMutation.RemoveEntries(table, Set.copyOf(request.entryIds()));
+            case BATCH -> new JournalLogMutation.RemoveEntries(table, batch);
+            case TABLE -> new JournalLogMutation.ClearEntries(table);
+            case ALL -> new JournalLogMutation.ClearAllEntries();
+        };
+        applyEdit(player, session, request.requestId(), Operation.DELETE, table, intent);
+    }
+
+    /** 保存每表策略或按现有规则裁剪。 */
+    public static void handleUpdateRetention(ServerPlayer player, UpdateJournalLogRetentionPayload request) {
+        ArchaeologyJournalLogSyncSession session = getLogSession(player);
+        ResourceLocation table = request.tableId();
+        boolean setLimit = request.action() == UpdateJournalLogRetentionPayload.Action.SET_LIMIT;
+        Operation op = setLimit ? Operation.RETENTION : Operation.PRUNE;
+        int global = ArchaeologyJournalLogState.TableLogHistory.getGlobalMaxEntries();
+        if (session == null || !session.isSeeded() || request.value() < (setLimit ? 1 : 0) || request.value() > global) {
+            reply(player, request.requestId(), op, table, Result.INVALID, 0, 0, 0);
+            return;
+        }
+        if (session.mirroredState().getTable(table) == null
+                && (!setLimit || !ArchaeologyJournalServerCatalog.staticTables().containsKey(table))) {
+            reply(player, request.requestId(), op, table, Result.NOT_FOUND, 0, 0, 0);
+            return;
+        }
+        JournalLogMutation.Intent intent = setLimit ? new JournalLogMutation.SetRetention(table, request.value())
+                : new JournalLogMutation.Prune(table, request.value());
+        applyEdit(player, session, request.requestId(), op, table, intent);
+    }
+
+    /** 备注在服务端受理后立即同步，持久化仍由常规日志队列执行。 */
+    public static void handleUpdateNote(ServerPlayer player, UpdateJournalLogNotePayload request) {
+        ArchaeologyJournalLogSyncSession session = getLogSession(player);
+        if (session == null || !session.isSeeded() || request.note().length() > JournalLogMutation.MAX_NOTE_LENGTH) {
+            reply(player, request.requestId(), Operation.NOTE, request.tableId(), Result.INVALID, 0, 0, 0);
+            return;
+        }
+        applyEdit(player, session, request.requestId(), Operation.NOTE, request.tableId(),
+                new JournalLogMutation.UpdateNote(request.tableId(), request.entryId(), request.note()));
+    }
+
+    private static void applyEdit(ServerPlayer player, ArchaeologyJournalLogSyncSession session, UUID requestId,
+                                  Operation operation, @Nullable ResourceLocation tableId, JournalLogMutation.Intent intent) {
         JournalLogMutation.Result result = mutations(player, session).apply(intent);
-        if (result.status() != Status.CHANGED) {
-            sendDeleteResult(player, payload, result.status() == Status.FAILED
-                    ? JournalLogDeleteResultPayload.Result.INVALID : JournalLogDeleteResultPayload.Result.NOT_FOUND, 0);
-            return;
-        }
-        switch (payload.scope()) {
-            case ENTRY -> Services.NETWORK.sendToPlayer(player, SyncJournalLogPayload.deleteEntry(
-                    session.getSessionId(), session.nextSequence(), tableId, payload.entryId()));
-            case BATCH, TABLE -> syncTable(player, session, tableId, session.mirroredState().getTable(tableId));
-            case ALL -> syncLogSnapshot(player);
-        }
-        sendDeleteResult(player, payload, JournalLogDeleteResultPayload.Result.SUCCESS, result.removedCount());
+        long revision = publish(session, result);
+        Result outcome = switch (result.status()) {
+            case CHANGED -> Result.APPLIED;
+            case UNCHANGED -> Result.UNCHANGED;
+            case NOT_FOUND -> Result.NOT_FOUND;
+            case FAILED -> Result.SAVE_FAILED;
+            case BLOCKED -> Result.INVALID;
+        };
+        reply(player, requestId, operation, tableId, outcome, revision, result.removedCount(), result.retentionLimit());
     }
 
-    // 更新当前表的自动保留上限，或按时间批量清理较旧的无备注日志
-    public static void handleUpdateRetention(ServerPlayer player, UpdateJournalLogRetentionPayload payload) {
+    private static void reply(ServerPlayer player, UUID id, Operation operation, @Nullable ResourceLocation table,
+                              Result result, long revision, int removed, int retention) {
+        Services.NETWORK.sendToPlayer(player, new JournalLogEditResultPayload(id, operation, table, result, revision,
+                removed, retention, ArchaeologyJournalLogState.TableLogHistory.getGlobalMaxEntries()));
+    }
+
+    private static void expireBatch(ServerPlayer player, ArchaeologyJournalLogSyncSession session) {
+        DeleteJournalLogPayload request = session.expireDeleteBatch(player.server.getTickCount());
+        if (request != null) {
+            reply(player, request.requestId(), Operation.DELETE, request.tableId(), Result.EXPIRED, 0, 0, 0);
+        }
+    }
+
+    /** 登录首次发布摘要，并在同一连接中保留权威序列。 */
+    public static void syncLogSummary(ServerPlayer player) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
-        if (session == null || !session.isSeeded() || session.getSessionId() == null) {
-            player.sendSystemMessage(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.log_retention.invalid"));
-            return;
+        if (session != null && session.isSeeded()) {
+            session.publication().baseline(session.mirroredState(), 0);
         }
-        int globalLimit = ArchaeologyJournalLogState.TableLogHistory.getGlobalMaxEntries();
-        if (payload.value() < (payload.action() == UpdateJournalLogRetentionPayload.Action.SET_LIMIT ? 1 : 0)
-                || payload.value() > globalLimit) {
-            player.sendSystemMessage(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.log_retention.invalid_range", globalLimit));
-            return;
-        }
-
-        JournalLogMutation.Intent intent = payload.action() == UpdateJournalLogRetentionPayload.Action.SET_LIMIT
-                ? new JournalLogMutation.SetRetention(payload.tableId(), payload.value())
-                : new JournalLogMutation.Prune(payload.tableId(), payload.value());
-        JournalLogMutation.Result result = mutations(player, session).apply(intent);
-        if (result.status() == Status.FAILED) {
-            player.sendSystemMessage(Component.translatable(
-                    "screen.unsuspiciousblock.archaeology_journal.log_retention.invalid"));
-            return;
-        }
-        int removed = result.removedCount();
-        int retentionLimit = result.retentionLimit();
-        ArchaeologyJournalLogState state = session.mirroredState();
-        syncTable(player, session, payload.tableId(), state.getTable(payload.tableId()));
-        String key = payload.action() == UpdateJournalLogRetentionPayload.Action.SET_LIMIT
-                ? "screen.unsuspiciousblock.archaeology_journal.log_retention.limit_saved"
-                : "screen.unsuspiciousblock.archaeology_journal.log_retention.pruned";
-        player.sendSystemMessage(Component.translatable(key,
-                payload.action() == UpdateJournalLogRetentionPayload.Action.SET_LIMIT ? retentionLimit : removed,
-                removed));
     }
 
-    private static void sendDeleteResult(ServerPlayer player, DeleteJournalLogPayload request,
-                                         JournalLogDeleteResultPayload.Result result, int removedCount) {
-        Services.NETWORK.sendToPlayer(player,
-                new JournalLogDeleteResultPayload(request.requestId(), result, removedCount));
-    }
-
-    // 处理客户端发来的备注更新请求：定位条目并写入新备注，然后增量同步给客户端
-    public static void handleUpdateNote(ServerPlayer player, UpdateJournalLogNotePayload payload) {
+    /** 同一连接的重同步、查看与退出入口。 */
+    public static void handleRequest(ServerPlayer player, RequestJournalLogPayload request) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
-        if (session == null || !session.isSeeded()) {
-            return;
+        if (session == null) return;
+        if (!session.isSeeded()) JournalPlayerDataService.preparePlayerData(player);
+        if (!session.isSeeded()) return;
+
+        switch (request.action()) {
+            case SUMMARY -> session.publication().baseline(session.mirroredState(), request.ticket());
+            case HISTORY -> session.publication().select(session.mirroredState(), request.tableId(), request.ticket());
+            case CLOSE -> session.publication().close(request.ticket());
         }
-        JournalLogMutation.Result result = mutations(player, session).apply(
-                new JournalLogMutation.UpdateNote(payload.tableId(), payload.entryId(), payload.note()));
-        UUID sessionId = session.getSessionId();
-        if (result.status() != Status.CHANGED || sessionId == null) return;
-        Services.NETWORK.sendToPlayer(player,
-                SyncJournalLogPayload.upsertEntry(sessionId, session.nextSequence(), payload.tableId(), Objects.requireNonNull(result.entry()).toTag()));
     }
 
-    // 向玩家下发按战利品表压缩并切片的日志全量快照
-    public static void syncLogSnapshot(ServerPlayer player) {
+    /** 每名玩家在当前服务端 tick 推进其日志发送窗口。 */
+    public static void tick(ServerPlayer player) {
         ArchaeologyJournalLogSyncSession session = getLogSession(player);
-        if (session == null || !session.isSeeded()) {
-            return;
+        if (session != null) {
+            expireBatch(player, session);
+            session.publication().tick(player);
         }
-        UUID sessionId = session.getSessionId();
-        if (sessionId == null) {
-            return;
-        }
-        List<EncodedTable> encodedTables = new ArrayList<>(session.mirroredState().getTables().size());
-        for (Map.Entry<ResourceLocation, ArchaeologyJournalLogState.TableLogHistory> table
-                : session.mirroredState().getTables().entrySet()) {
-            encodedTables.add(new EncodedTable(table.getKey(), JournalLogSnapshotCodec.encode(table.getValue())));
-        }
-
-        UUID snapshotId = UUID.randomUUID();
-        Services.NETWORK.sendToPlayer(player,
-                new SyncJournalLogSnapshotStartPayload(
-                        sessionId, session.lastSequence(), snapshotId, encodedTables.size()));
-        for (EncodedTable table : encodedTables) {
-            int chunkCount = Math.max(1, (table.data().length + JournalLogSnapshotCodec.MAX_CHUNK_BYTES - 1)
-                    / JournalLogSnapshotCodec.MAX_CHUNK_BYTES);
-            for (int chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
-                int from = chunkIndex * JournalLogSnapshotCodec.MAX_CHUNK_BYTES;
-                int to = Math.min(table.data().length, from + JournalLogSnapshotCodec.MAX_CHUNK_BYTES);
-                Services.NETWORK.sendToPlayer(player,
-                        new SyncJournalLogTableChunkPayload(sessionId, snapshotId, table.tableId(),
-                                chunkIndex, chunkCount, Arrays.copyOfRange(table.data(), from, to)));
-            }
-        }
-        Services.NETWORK.sendToPlayer(player,
-                new SyncJournalLogSnapshotEndPayload(sessionId, snapshotId));
     }
 
-    // 处理客户端主动请求的日志快照重同步（sessionId 不匹配恢复路径）
-    public static void handleRequestSnapshot(ServerPlayer player) {
-        ArchaeologyJournalLogSyncSession session = getLogSession(player);
-        if (session == null || !session.isSeeded()) {
-            // 会话未 seeded 时通过统一入口恢复并迁移玩家数据
-            JournalPlayerDataService.preparePlayerData(player);
-        }
-        syncLogSnapshot(player);
+    private static long publish(ArchaeologyJournalLogSyncSession session, JournalLogMutation.Result result) {
+        return result.status() == Status.CHANGED ? session.publication().publish(session.mirroredState(), result.change()) : 0L;
     }
 
     // 获取玩家的日志同步会话（通过 mixin 接口）
@@ -333,16 +267,4 @@ public final class JournalLogHandler {
         }, tables -> server != null && JournalLogStorage.persistTablesNow(server, player.getUUID(), tables));
     }
 
-    private static void syncTable(ServerPlayer player, ArchaeologyJournalLogSyncSession session,
-                                  ResourceLocation tableId,
-                                  @Nullable ArchaeologyJournalLogState.TableLogHistory history) {
-        if (history == null || session.getSessionId() == null) {
-            return;
-        }
-        Services.NETWORK.sendToPlayer(player, SyncJournalLogPayload.replaceTable(
-                session.getSessionId(), session.nextSequence(), tableId, history.toTag()));
-    }
-
-    private record EncodedTable(ResourceLocation tableId, byte[] data) {
-    }
 }
