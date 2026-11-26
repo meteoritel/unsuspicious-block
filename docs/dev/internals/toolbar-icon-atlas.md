@@ -97,6 +97,7 @@
   - `CAT_FAVOR_HUD`：`16 x 16` 中性白灰可染色猫爪位于 `(196, 0)`，供 [`CatFavorHud`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/hud/CatFavorHud.java) 按阶段色调制绘制（状态效果图标仍保留独立 `textures/mob_effect/cat_favor.png`）。
   - `EXTERNAL_GITHUB` / `EXTERNAL_CURSEFORGE` / `EXTERNAL_MODRINTH`：`16 x 16` 依次位于 `(128, 18)`、`(144, 18)`、`(160, 18)`。
   - 场景页专用扩展图标（`10 x 10`，置于空闲底行 `y = 96`）：`SYNC_PLAYER` `(0, 96)`（同步玩家自身状态）、`STATUS_BLOCKED` `(10, 96)`（只读条件/门槛未满足标记）、`LUCK_ICON` `(20, 96)`（顶栏幸运读数图标）。
+  - Toast 铭牌皮肤与展台槽（置于底行 `y = 96`）：`TOAST_FRAME_BRONZE` / `TOAST_FRAME_GOLD` / `TOAST_FRAME_CRIMSON`（`16 x 16`, `corner = 5`，依次位于 `(64 / 80 / 96, 96)`）、`TOAST_ICON_SOCKET` / `TOAST_ICON_SOCKET_GOLD`（`16 x 16`, `corner = 4`，位于 `(112 / 128, 96)`）、`TOAST_COUNT_PILL`（`12 x 12`, `corner = 3`，位于 `(144, 96)`）。
 - **Zone 3（控件组合精灵）**：
   - `pageArrow`：上一页 `(0, 52 / 65 / 78)`、下一页 `(23, 52 / 65 / 78)`，规格 `23 x 13`。
   - `sideTabPlate`：`MANAGEMENT` `(50 / 74, 52)`、`HELP` `(50 / 74, 72)`，规格 `24 x 20`（先画剪影底板再叠加 `GEAR` / `HELP_CREAM`）。

@@ -1,18 +1,15 @@
 package com.meteorite.unsuspiciousblock.client.ui.toast;
 
-import com.meteorite.unsuspiciousblock.core.item.ModItems;
+import com.meteorite.meteosuikit.api.render.UiIcon;
 import com.meteorite.meteosuikit.api.text.TextScroll;
+import com.meteorite.unsuspiciousblock.core.item.ModItems;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.toasts.Toast;
 import net.minecraft.client.gui.components.toasts.ToastComponent;
-import net.minecraft.network.chat.Component;
-import com.meteorite.meteosuikit.api.geometry.UiRect;
-import com.meteorite.meteosuikit.api.render.UiIcon;
-import com.meteorite.meteosuikit.api.style.UiSurfaceSkin;
-import com.meteorite.meteosuikit.api.style.UiControlStyle;
 import net.minecraft.locale.Language;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.NotNull;
@@ -22,17 +19,33 @@ import java.util.List;
 import java.util.Queue;
 
 /**
- * 考古笔记解锁通知 Toast —— 解锁新表或新物品时在右上角弹窗提示。
+ * 考古笔记解锁通知 Toast —— 解锁新表、新物品或单表 100% 完成时在右上角弹窗提示。
+ * <p>
  * 同一类型的多个解锁条目会在同一个 Toast 框内轮换展示；
  * 展示时间到期后即使还有未轮换完的内容也会正常消失。
  */
 public class JournalUnlockToast implements Toast {
 
-    private static final UiSurfaceSkin BACKGROUND = UiSurfaceSkin.panel(0xFF24232A, 0xFF796342, 0xFF494551);
-    // 单条内容轮换间隔（毫秒）
-    private static final long ROTATION_INTERVAL = 500L;
-    // Toast 总展示时间（毫秒），到期后即使还有条目也会消失
-    private static final long DISPLAY_TIME = 5000L;
+    private static final int MIN_WIDTH = 176;
+    private static final int MAX_WIDTH = 218;
+    private static final int TOAST_HEIGHT = 38;
+    private static final int SOCKET_Y = 7;
+    private static final int TITLE_Y = 8;
+    private static final int BADGE_Y = 7;
+    private static final int DESCRIPTION_Y = 20;
+
+    // 轮换间隔自适应区间（毫秒）：队列少时从容阅读，集中解锁时适度加快
+    private static final long BASE_ROTATION_INTERVAL = 1100L;
+    private static final long MIN_ROTATION_INTERVAL = 700L;
+    // 基础展示时长与合并延展上限（毫秒）
+    private static final long BASE_DISPLAY_TIME = 5000L;
+    private static final long MERGE_EXTENSION_TIME = 1000L;
+    private static final long MAX_DISPLAY_TIME = 8000L;
+
+    private static final String TABLE_TOKEN = "journal_table_unlocks";
+    private static final String ITEM_TOKEN = "journal_item_unlocks";
+    private static final String COMPLETION_TOKEN = "journal_table_completion";
+
     private static final Component TABLE_UNLOCK_TITLE =
             Component.translatable("toast.unsuspiciousblock.journal_unlock.title");
     private static final Component COMPLETION_TITLE =
@@ -44,27 +57,45 @@ public class JournalUnlockToast implements Toast {
     private final Queue<Entry> entries = new ArrayDeque<>();
     private final Object token;
     private final Component title;
+    private final ToastFrame.Tone tone;
     private Entry displayedEntry;
     private UiIcon displayedIcon;
     private String displayedDescription = "";
+    private Font measuredFont;
     private Language language;
+    private int currentWidth = MIN_WIDTH;
+    private int lastMeasuredRemaining = -1;
+    private long displayDurationMs = BASE_DISPLAY_TIME;
     private long startTime = -1L;
     private long lastRotationTime = -1L;
 
-    // 解锁条目
+    /**
+     * 单条解锁展示记录。
+     */
     public record Entry(Component description, ItemStack icon) {
     }
 
-    private JournalUnlockToast(Object token, Component title) {
+    private JournalUnlockToast(Object token, Component title, ToastFrame.Tone tone) {
         this.token = token;
         this.title = title;
+        this.tone = tone;
     }
 
     /**
-     * 向此 Toast 追加一条条目；若 Toast 已在展示则自动轮换到新条目。
+     * 向此 Toast 追加一条条目；若 Toast 已在展示则按节奏轮换展示。
      */
     public void addEntry(Entry entry) {
         this.entries.add(entry);
+    }
+
+    @Override
+    public int width() {
+        return currentWidth;
+    }
+
+    @Override
+    public int height() {
+        return TOAST_HEIGHT;
     }
 
     @Override
@@ -76,11 +107,16 @@ public class JournalUnlockToast implements Toast {
             this.lastRotationTime = timeSinceLastVisible;
         }
 
-        // 检查是否需要轮换到下一条
-        long elapsedSinceRotation = timeSinceLastVisible - this.lastRotationTime;
-        if (elapsedSinceRotation >= ROTATION_INTERVAL && this.entries.size() > 1) {
-            this.entries.poll();
-            this.lastRotationTime = timeSinceLastVisible;
+        double multiplier = toastComponent.getNotificationDisplayTimeMultiplier();
+        double totalDuration = Math.max(1.0D, this.displayDurationMs * multiplier);
+        long totalElapsed = Math.max(0L, timeSinceLastVisible - this.startTime);
+
+        if (this.entries.size() > 1) {
+            long interval = computeRotationInterval(totalDuration, totalElapsed, this.entries.size());
+            if (timeSinceLastVisible - this.lastRotationTime >= interval) {
+                this.entries.poll();
+                this.lastRotationTime = timeSinceLastVisible;
+            }
         }
 
         Entry current = this.entries.peek();
@@ -88,33 +124,34 @@ public class JournalUnlockToast implements Toast {
             return Visibility.HIDE;
         }
 
-        BACKGROUND.paint(guiGraphics, new UiRect(0, 0, width(), height()), UiControlStyle.State.NORMAL);
-
         Font font = toastComponent.getMinecraft().font;
+        int remaining = this.entries.size() - 1;
+        refreshLayoutMetrics(font, current, remaining);
 
-        // 标题
-        TextScroll.draw(guiGraphics, font, title.getString(), 30, 7, width() - 36, 0xFFFFFF, false, 0, false);
-        if (displayedEntry != current || language != Language.getInstance()) {
-            displayedEntry = current;
-            language = Language.getInstance();
-            displayedIcon = new UiIcon.Item(current.icon().isEmpty() ? new ItemStack(Items.BOOK) : current.icon());
-            displayedDescription = current.description().getString();
-        }
-        TextScroll.draw(guiGraphics, font, displayedDescription, 30, 18, width() - 36, 0xFFFFD0, false, 0, false);
-        displayedIcon.render(guiGraphics, 8, 8);
+        int width = width();
+        int height = height();
+        ToastFrame.paintBackground(guiGraphics, width, height, this.tone, totalElapsed);
+        ToastFrame.paintIconSocket(guiGraphics, ToastFrame.PADDING_X, SOCKET_Y, this.tone, this.displayedIcon);
 
-        // 轮换指示器：多条待显示时在右下角提示**剩余条数**（当前这条已在展示，故减一）。
-        // 不走 "x/n"：队列会随新解锁增长，没有稳定的总数；文案改由 i18n 提供（I-13）。
-        if (this.entries.size() > 1) {
-            String indicator = Component.translatable(
-                    "toast.unsuspiciousblock.journal_unlock.remaining", this.entries.size() - 1).getString();
-            guiGraphics.drawString(font, indicator, this.width() - font.width(indicator) - 4, this.height() - 10, 0xAAAAAA, false);
+        int badgeReserved = ToastFrame.measureCountBadgeReservedWidth(font, remaining);
+        int titleMaxWidth = Math.max(1, width - ToastFrame.TEXT_START_X - ToastFrame.TEXT_RIGHT_MARGIN - badgeReserved);
+        String trimmedTitle = TextScroll.trimToWidth(font, this.title.getString(), titleMaxWidth);
+        guiGraphics.drawString(font, trimmedTitle, ToastFrame.TEXT_START_X, TITLE_Y, this.tone.titleColor(), true);
+
+        if (remaining > 0) {
+            ToastFrame.paintCountBadge(
+                    guiGraphics, font, width - ToastFrame.TEXT_RIGHT_MARGIN, BADGE_Y, remaining, this.tone);
         }
 
-        // 总展示时间结束则隐藏
-        double multiplier = toastComponent.getNotificationDisplayTimeMultiplier();
-        long totalElapsed = timeSinceLastVisible - this.startTime;
-        return totalElapsed < DISPLAY_TIME * multiplier ? Visibility.SHOW : Visibility.HIDE;
+        int descMaxWidth = Math.max(1, width - ToastFrame.TEXT_START_X - ToastFrame.TEXT_RIGHT_MARGIN);
+        String trimmedDescription = TextScroll.trimToWidth(font, this.displayedDescription, descMaxWidth);
+        guiGraphics.drawString(
+                font, trimmedDescription, ToastFrame.TEXT_START_X, DESCRIPTION_Y, this.tone.subtitleColor(), true);
+
+        double remainingRatio = 1.0D - totalElapsed / totalDuration;
+        ToastFrame.paintProgressBar(guiGraphics, width, height, remainingRatio, this.tone);
+
+        return totalElapsed < totalDuration ? Visibility.SHOW : Visibility.HIDE;
     }
 
     @Override
@@ -122,25 +159,72 @@ public class JournalUnlockToast implements Toast {
         return this.token;
     }
 
+    // 宽度只做单调递增扩展，避免轮换变短时造成 ToastComponent 右对齐边缘抖动
+    private void refreshLayoutMetrics(Font font, Entry current, int remaining) {
+        Language currentLanguage = Language.getInstance();
+        boolean contentChanged = this.displayedEntry != current || this.language != currentLanguage;
+        if (contentChanged) {
+            this.displayedEntry = current;
+            this.language = currentLanguage;
+            this.displayedIcon = new UiIcon.Item(resolveIconStack(current.icon()));
+            this.displayedDescription = current.description().getString();
+        }
+        if (contentChanged || this.measuredFont != font || this.lastMeasuredRemaining != remaining) {
+            this.measuredFont = font;
+            this.lastMeasuredRemaining = remaining;
+            int badgeReserved = ToastFrame.measureCountBadgeReservedWidth(font, remaining);
+            int titleNeeded = ToastFrame.TEXT_START_X
+                    + font.width(this.title.getString())
+                    + badgeReserved
+                    + ToastFrame.TEXT_RIGHT_MARGIN;
+            int descNeeded = ToastFrame.TEXT_START_X
+                    + font.width(this.displayedDescription)
+                    + ToastFrame.TEXT_RIGHT_MARGIN;
+            int desired = Math.clamp(Math.max(titleNeeded, descNeeded), MIN_WIDTH, MAX_WIDTH);
+            this.currentWidth = Math.max(this.currentWidth, desired);
+        }
+    }
+
+    private static ItemStack resolveIconStack(ItemStack entryIcon) {
+        if (!entryIcon.isEmpty()) {
+            return entryIcon;
+        }
+        if (ModItems.ARCHAEOLOGY_JOURNAL != null) {
+            return new ItemStack(ModItems.ARCHAEOLOGY_JOURNAL);
+        }
+        return new ItemStack(Items.BOOK);
+    }
+
+    private static long computeRotationInterval(double totalDuration, long totalElapsed, int queueSize) {
+        long remainingTime = Math.max(0L, Math.round(totalDuration) - totalElapsed);
+        long adaptive = remainingTime / Math.max(1, queueSize);
+        return Math.clamp(adaptive, MIN_ROTATION_INTERVAL, BASE_ROTATION_INTERVAL);
+    }
+
     // 添加或合并 Toast：相同 token 的 Toast 会合并条目而非替换
     private static void addOrMerge(ToastComponent toastComponent, JournalUnlockToast newToast) {
         JournalUnlockToast existing = toastComponent.getToast(JournalUnlockToast.class, newToast.token);
         if (existing != null) {
-            // 合并条目到已有 Toast
             for (Entry entry : newToast.entries) {
                 existing.addEntry(entry);
             }
+            existing.displayDurationMs = Math.min(
+                    MAX_DISPLAY_TIME, existing.displayDurationMs + MERGE_EXTENSION_TIME);
             return;
         }
         toastComponent.addToast(newToast);
     }
 
-    // 便捷方法：批量添加多条表解锁 Toast
+    /**
+     * 批量添加多条战利品表解锁 Toast。
+     */
     public static void addTableUnlocks(List<Component> tableNames) {
-        if (tableNames.isEmpty()) return;
+        if (tableNames.isEmpty()) {
+            return;
+        }
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
-            JournalUnlockToast toast = new JournalUnlockToast(TABLE_TOKEN, TABLE_UNLOCK_TITLE);
+            JournalUnlockToast toast = new JournalUnlockToast(TABLE_TOKEN, TABLE_UNLOCK_TITLE, ToastFrame.Tone.BRONZE);
             for (Component name : tableNames) {
                 toast.addEntry(new Entry(name, ItemStack.EMPTY));
             }
@@ -148,12 +232,16 @@ public class JournalUnlockToast implements Toast {
         }
     }
 
-    // 便捷方法：批量添加多条物品解锁 Toast
+    /**
+     * 批量添加多条物品解锁 Toast。
+     */
     public static void addItemUnlocks(List<Entry> itemEntries) {
-        if (itemEntries.isEmpty()) return;
+        if (itemEntries.isEmpty()) {
+            return;
+        }
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
-            JournalUnlockToast toast = new JournalUnlockToast(ITEM_TOKEN, ITEM_UNLOCK_TITLE);
+            JournalUnlockToast toast = new JournalUnlockToast(ITEM_TOKEN, ITEM_UNLOCK_TITLE, ToastFrame.Tone.BRONZE);
             for (Entry entry : itemEntries) {
                 toast.addEntry(entry);
             }
@@ -161,20 +249,19 @@ public class JournalUnlockToast implements Toast {
         }
     }
 
-    // 便捷方法：添加战利品表 100% 完成 Toast，图标为古代金币
+    /**
+     * 添加战利品表 100% 完成 Toast，使用金框礼赞风格与古代金币图标。
+     */
     public static void addTableCompletion(Component tableName) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
-        JournalUnlockToast toast = new JournalUnlockToast(COMPLETION_TOKEN, COMPLETION_TITLE);
+        if (mc.player == null) {
+            return;
+        }
+        JournalUnlockToast toast = new JournalUnlockToast(COMPLETION_TOKEN, COMPLETION_TITLE, ToastFrame.Tone.GOLD);
         ItemStack icon = ModItems.ANCIENT_COIN != null
                 ? new ItemStack(ModItems.ANCIENT_COIN)
                 : ItemStack.EMPTY;
         toast.addEntry(new Entry(tableName, icon));
         addOrMerge(mc.getToasts(), toast);
     }
-
-    // Token 常量：同一类型只有一个 Toast 实例
-    private static final String TABLE_TOKEN = "journal_table_unlocks";
-    private static final String ITEM_TOKEN = "journal_item_unlocks";
-    private static final String COMPLETION_TOKEN = "journal_table_completion";
 }

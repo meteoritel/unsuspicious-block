@@ -126,7 +126,7 @@ flowchart TD
 
 - **铁砧 / 砂轮成本分解**：`client/anvil/` 与 `client/grindstone/` 各自维护独立的计算器与行构建器；共用编排（持有检测、通用行拼接与容器槽位登记清单）集中于 [`BreakdownPreview`](../../../common/src/main/java/com/meteorite/unsuspiciousblock/client/tooltip/BreakdownPreview.java)，平台在 Tooltip 事件中调用 `BreakdownPreview.appendRegistered`，仅当玩家个人携带范围内存在**猫之瞳**时追加分解说明。
 - **附魔揭示展示**：客户端仅做展示，`EnchantmentRevealClientState` 接收服务端通过 `SyncEnchantmentRevealListPayload` 下发的完整候选列表，`EnchantmentScreenMixin` 反推悬停槽位后交由 `EnchantmentRevealTooltipBuilder` 绘制（机制权威见[附魔系统](enchantment.md)）。
-- **Toast 通知**：`JournalUnlockToast`（表解锁、物品解锁、100% 完成奖励）与 `CatBondToast`（猫族羁绊阶段变化）均基于 UI Kit 面板、文本裁剪与图标组件构建，保留原有队列合并、轮换与时长控制；标本箱富 Tooltip 同样基于 UI Kit 绘制并遵守 `ClientTooltipComponent` 生命周期。
+- **Toast 通知**：`JournalUnlockToast`（表解锁、物品解锁、100% 完成奖励）与 `CatBondToast`（猫族羁绊阶段变化）共用 `ToastFrame` 渲染深色青铜铭牌风 9-slice 外框、左侧内凹图标展台槽、入场微光与底部时间进度条，并保留队列合并、自适应轮换节奏与分级色调；标本箱富 Tooltip 同样基于 UI Kit 绘制并遵守 `ClientTooltipComponent` 生命周期。
 
 ## 9. 按键绑定 (`ModKeyBindings`)
 

@@ -1127,7 +1127,7 @@
   "screen.unsuspiciousblock.loot_table_management.import_failed.io": "导入失败：无法读取文件",
   "screen.unsuspiciousblock.loot_table_management.import_failed.too_large": "导入失败：文件超过 2 MiB",
   "toast.unsuspiciousblock.journal_unlock.item_title": "新发现",
-  "toast.unsuspiciousblock.journal_unlock.remaining": "还有 %s 条",
+  "toast.unsuspiciousblock.journal_unlock.badge": "+%s",
   "screen.unsuspiciousblock.archaeology_journal.function.copy_components": "从 %s 复制组件",
   "screen.unsuspiciousblock.archaeology_journal.function.copy_custom_data": "从 %s 复制自定义数据（路径数：%s）",
   "screen.unsuspiciousblock.archaeology_journal.function.copy_name": "从 %s 复制名称",

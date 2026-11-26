@@ -246,6 +246,42 @@ public final class UiAtlas {
     public static final UiNineSlice CATEGORY_CARD_SELECTED = new UiNineSlice(
             TEXTURE, 140, 76, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
 
+    /**
+     * Toast 弹框深色古铜铭牌外框（9-slice，16×16，corner=5）。
+     */
+    public static final UiNineSlice TOAST_FRAME_BRONZE = new UiNineSlice(
+            TEXTURE, 64, 96, 16, 5, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+    /**
+     * Toast 弹框琥珀亮金庆贺外框（9-slice，16×16，corner=5）。
+     */
+    public static final UiNineSlice TOAST_FRAME_GOLD = new UiNineSlice(
+            TEXTURE, 80, 96, 16, 5, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+    /**
+     * Toast 弹框暗绯铜降阶警示外框（9-slice，16×16，corner=5）。
+     */
+    public static final UiNineSlice TOAST_FRAME_CRIMSON = new UiNineSlice(
+            TEXTURE, 96, 96, 16, 5, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+    /**
+     * Toast 弹框左侧深色内凹古铜图标底座槽（9-slice，16×16，corner=4）。
+     */
+    public static final UiNineSlice TOAST_ICON_SOCKET = new UiNineSlice(
+            TEXTURE, 112, 96, 16, 4, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+    /**
+     * Toast 弹框左侧金边内凹图标底座槽（9-slice，16×16，corner=4）。
+     */
+    public static final UiNineSlice TOAST_ICON_SOCKET_GOLD = new UiNineSlice(
+            TEXTURE, 128, 96, 16, 4, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+    /**
+     * Toast 弹框右上角剩余条数胶囊徽章底板（9-slice，12×12，corner=3）。
+     */
+    public static final UiNineSlice TOAST_COUNT_PILL = new UiNineSlice(
+            TEXTURE, 144, 96, 12, 3, ATLAS_WIDTH, ATLAS_HEIGHT);
+
     private static final UiSkinImages.Image PARCHMENT_NORMAL = nineSliceImage(104, 52);
     private static final UiSkinImages.Image PARCHMENT_HOVER = nineSliceImage(116, 52);
     private static final UiSkinImages.Image PARCHMENT_PRESSED = nineSliceImage(128, 52);

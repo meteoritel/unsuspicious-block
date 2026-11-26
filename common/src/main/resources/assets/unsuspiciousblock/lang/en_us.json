@@ -1127,7 +1127,7 @@
   "screen.unsuspiciousblock.loot_table_management.import_failed.io": "Import failed: could not read the file",
   "screen.unsuspiciousblock.loot_table_management.import_failed.too_large": "Import failed: file larger than 2 MiB",
   "toast.unsuspiciousblock.journal_unlock.item_title": "New Discovery",
-  "toast.unsuspiciousblock.journal_unlock.remaining": "%s more",
+  "toast.unsuspiciousblock.journal_unlock.badge": "+%s",
   "screen.unsuspiciousblock.archaeology_journal.function.copy_components": "Copy components from %s",
   "screen.unsuspiciousblock.archaeology_journal.function.copy_custom_data": "Copy custom data from %s (%s paths)",
   "screen.unsuspiciousblock.archaeology_journal.function.copy_name": "Copy name from %s",
