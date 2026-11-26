@@ -1,12 +1,10 @@
 package com.meteorite.unsuspiciousblock.client.ui.journal.catalog;
 
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 import net.minecraft.locale.Language;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.DeclaredChance;
 
-import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyEntryItem;
 import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
 import com.meteorite.unsuspiciousblock.client.ui.panel.DetailOverlayPanel;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
@@ -17,7 +15,6 @@ import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesSto
 import com.meteorite.unsuspiciousblock.client.ui.support.CatalogSorter;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalSearchQuery;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHandler;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogQueryIndex;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.CatalogCategoryDefinition;
@@ -52,13 +49,18 @@ import java.util.Set;
 public class JournalViewModel {
 
     private ArchaeologyJournalState state;
-    private final Map<ResourceLocation, TableDefinition> catalogDefinitions = new LinkedHashMap<>();
+    private static final int CHILD_PREVIEW_SIZE = 3;
+
+    private Map<ResourceLocation, TableDefinition> catalogDefinitions = Map.of();
+    private Map<ResourceLocation, TableDefinition> visibleDefinitions = Map.of();
     private final Map<ResourceLocation, ArchaeologyJournalEntry> allViews = new LinkedHashMap<>();
     private final List<ArchaeologyJournalEntry> tableViews = new ArrayList<>();
     private final List<RowMeta> rowMetadata = new ArrayList<>();
     private final List<CategoryEntryData> categoryViews = new ArrayList<>();
     private final Map<ResourceLocation, List<ResourceLocation>> parentIdsByChild = new LinkedHashMap<>();
     private final Map<ResourceLocation, Set<ResourceLocation>> categoryIdsByTable = new LinkedHashMap<>();
+    private final Map<ResourceLocation, Set<ResourceLocation>> membersByCategory = new LinkedHashMap<>();
+    private final Map<ResourceLocation, List<ItemDefinition>> directItemsByTable = new LinkedHashMap<>();
     private CatalogStructure structure = CatalogStructure.empty();
     private final Set<ResourceLocation> expandedRoots = new LinkedHashSet<>();
     private boolean categoryHome = true;
@@ -72,39 +74,26 @@ public class JournalViewModel {
     private boolean sortDescending;
     private boolean hideLocked;
     private long lastConnectionEpoch;
-    private long lastCatalogRevision;
+    private long lastScenarioRevision;
     private long lastNameRevision = -1;
     private Language lastLanguage;
     private long lastStateRevision;
     private boolean lastReadingReady;
     private long lastLogRevision;
 
-    // —— 目录派生数据缓存（键均为 loadedCatalogRevision，即当前 catalogDefinitions 的版本）——
-    // 已加载目录定义的版本：reloadCatalog 时更新，作为所有目录派生缓存的失效点
-    private long loadedCatalogRevision = -1L;
-    // 关系索引（子表 -> 父表、表 -> 分类）只在目录定义或分类结构变化时重建
-    private long relationshipIndexRevision = Long.MIN_VALUE;
-    // 从分类顶层出发的最短父路径，顶层入口的路径为空。
-    private Map<ResourceLocation, List<ResourceLocation>> firstPathsByTableCache = Map.of();
-    private long firstPathsRevision = Long.MIN_VALUE;
-    // 表子树物品闭包；值来自 CatalogQueryIndex.subtreeItems，本身即为不可变列表
+    private @Nullable Map<ResourceLocation, List<ResourceLocation>> firstPathsByTableCache;
     private final Map<ResourceLocation, List<ItemDefinition>> subtreeItemsCache = new LinkedHashMap<>();
-    private long subtreeItemsRevision = Long.MIN_VALUE;
-    // 网格装配结果缓存：输入不变时直接返回同一份不可变结果
-    @Nullable
-    private GridCacheKey gridCacheKey;
-    @Nullable
-    private BuildGridResult gridCacheResult;
+    private final Map<ResourceLocation, List<ItemDefinition>> completionItemsCache = new LinkedHashMap<>();
+    private @Nullable TableDefinition gridDefinition;
+    private @Nullable GridCacheKey gridCacheKey;
+    private @Nullable BuildGridResult gridCacheResult;
 
-    // —— 名称文本缓存 ——
-    // 输入 = 目录定义 + 客户端语言（显示名的 getString() 是一次翻译查询）；
-    // 版本键 = (loadedCatalogRevision, 客户端语言码)，任一变化即整体失效
     private final Map<ResourceLocation, String> displayNameTexts = new LinkedHashMap<>();
     private final Map<ResourceLocation, String> lowercaseTableNames = new LinkedHashMap<>();
     private final Map<ResourceLocation, List<JournalSearchQuery.LowercaseItem>> lowercaseTableItems =
             new LinkedHashMap<>();
     private long nameOverrideRevision = Long.MIN_VALUE;
-    private long nameCacheRevision = Long.MIN_VALUE;
+    private @Nullable Map<ResourceLocation, TableDefinition> nameCacheCatalog;
     private Language nameCacheLanguage;
 
     public JournalViewModel() {
@@ -114,7 +103,11 @@ public class JournalViewModel {
     public void initRevisions() {
         this.lastConnectionEpoch = JournalClientConnection.epoch();
         this.lastLogRevision = JournalClientConnection.log().sortRevision();
-        this.lastCatalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
+        this.lastScenarioRevision = JournalClientConnection.scenario().projectionRevision();
+        this.lastNameRevision = ClientLootTableLanguageStore.revision();
+        this.lastLanguage = Language.getInstance();
+        this.state = ArchaeologyJournalClientState.getState();
+        reloadCatalog();
         this.lastStateRevision = ArchaeologyJournalClientState.getStateRevision();
         this.lastReadingReady = ArchaeologyJournalClientState.isReadingReady();
     }
@@ -135,6 +128,11 @@ public class JournalViewModel {
 
     public List<ArchaeologyJournalEntry> tableViews() {
         return this.tableViews;
+    }
+
+    /** 当前目录是否收录该表。 */
+    public boolean hasCatalogTable(ResourceLocation table) {
+        return catalogDefinitions.containsKey(table);
     }
 
     public boolean isNavigationTargetValid(ResourceLocation table) {
@@ -222,38 +220,54 @@ public class JournalViewModel {
         return true;
     }
 
-    // 从当前父表的子表入口跳转时，保留当前目录路径，先展开父表再查找其下的子表行。
-    public boolean prepareNavigationToChild(ResourceLocation parentId, ResourceLocation childId) {
-        TableDefinition parent = this.catalogDefinitions.get(parentId);
-        if (parent == null || !parent.childTables().contains(childId)) {
-            return false;
-        }
-        if (this.currentSearch.isEmpty() && parentId.equals(selectedTableId())) {
-            this.expandedRoots.addAll(this.rowMetadata.get(this.selectedIndex).parentPath());
-        } else if (!prepareNavigationTo(parentId)) {
-            return false;
-        }
-        this.expandedRoots.add(parentId);
-        return true;
+    /** 从当前出现路径展开子表，同一表在其他父路径的出现位置不参与定位。 */
+    public @Nullable RowLocation prepareNavigationToChild(ResourceLocation childId) {
+        RowLocation parent = selectedLocation();
+        if (parent == null || !catalogDefinitions.get(parent.table()).childTables().contains(childId)) return null;
+        selectedCategory = parent.category();
+        categoryHome = false;
+        List<ResourceLocation> path = new ArrayList<>(parent.parentPath());
+        path.add(parent.table());
+        expandedRoots.addAll(path);
+        return new RowLocation(parent.category(), path, childId);
     }
 
-    // 指定父表时优先选中直接子表行，普通定位优先选中顶层入口。
-    public int findNavigationRow(ResourceLocation tableId, @Nullable ResourceLocation parentTableId) {
+    /** 返回当前投影中同一出现位置的行。 */
+    public int findRow(RowLocation location) {
+        for (int index = 0; index < tableViews.size(); index++) {
+            if (location.equals(rowLocation(index))) return index;
+        }
+        return -1;
+    }
+
+    /** 表级阅读目标优先定位自身的顶层入口。 */
+    public int findNavigationRow(ResourceLocation tableId) {
         int fallback = -1;
-        for (int index = 0; index < this.tableViews.size(); index++) {
-            if (!this.tableViews.get(index).id().equals(tableId)) {
-                continue;
-            }
-            List<ResourceLocation> path = this.rowMetadata.get(index).parentPath();
-            if (fallback < 0 || path.isEmpty()) {
-                fallback = index;
-            }
-            ResourceLocation directParent = path.isEmpty() ? null : path.getLast();
-            if (Objects.equals(parentTableId, directParent)) {
-                return index;
-            }
+        for (int index = 0; index < tableViews.size(); index++) {
+            if (!tableViews.get(index).id().equals(tableId)) continue;
+            if (rowMetadata.get(index).parentPath().isEmpty()) return index;
+            if (fallback < 0) fallback = index;
         }
         return fallback;
+    }
+
+    /** 捕获行身份，供导航历史和子页返回使用。 */
+    public @Nullable RowLocation selectedLocation() {
+        return selectedIndex < 0 ? null : rowLocation(selectedIndex);
+    }
+
+    private RowLocation rowLocation(int index) {
+        ResourceLocation table = tableViews.get(index).id();
+        List<ResourceLocation> path = rowMetadata.get(index).parentPath();
+        ResourceLocation root = path.isEmpty() ? table : path.getFirst();
+        return new RowLocation(structure.rootCategories().get(root), path, table);
+    }
+
+    /** 目录行的完整出现位置，与共享的表级进度身份分别使用。 */
+    public record RowLocation(@Nullable ResourceLocation category, List<ResourceLocation> parentPath, ResourceLocation table) {
+        public RowLocation {
+            parentPath = List.copyOf(parentPath);
+        }
     }
 
     public boolean rowHasChildren(int rowIndex) {
@@ -328,48 +342,90 @@ public class JournalViewModel {
         return this.tableViews.isEmpty();
     }
 
-    public void reloadCatalog() {
-        this.catalogDefinitions.clear();
-        this.catalogDefinitions.putAll(ArchaeologyJournalClientState.getCatalog());
-        this.structure = ArchaeologyJournalClientState.getCatalogStructure();
-        this.loadedCatalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
+    private void reloadCatalog() {
+        catalogDefinitions = ArchaeologyJournalClientState.getBaseCatalog();
+        structure = ArchaeologyJournalClientState.getCatalogStructure();
+        visibleDefinitions = ArchaeologyJournalClientState.getCatalog();
+        directItemsByTable.clear();
+        visibleDefinitions.forEach((id, definition) -> directItemsByTable.put(id,
+                definition.items().stream().filter(CatalogQueryIndex::hasDirectSource).toList()));
+        rebuildRelationshipIndexes();
+        firstPathsByTableCache = null;
+        subtreeItemsCache.clear();
+        completionItemsCache.clear();
+        gridDefinition = null;
+        nameCacheCatalog = null;
     }
 
-    /** 需要从根 Screen 提交的最小刷新范围。 */
-    public enum Refresh { NONE, ORDER, CONTENT }
+    /** 根 Screen 需要提交的最小刷新范围。 */
+    public enum Refresh { NONE, ORDER, RIGHT_PAGE, CONTENT }
 
     public Refresh refreshIfNeeded() {
         long epoch = JournalClientConnection.epoch();
         long logRevision = JournalClientConnection.log().sortRevision();
-        boolean connectionChanged = epoch != this.lastConnectionEpoch;
-        this.lastConnectionEpoch = epoch;
-        long catalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
+        boolean connectionChanged = epoch != lastConnectionEpoch;
+        lastConnectionEpoch = epoch;
+        boolean catalogChanged = catalogDefinitions != ArchaeologyJournalClientState.getBaseCatalog();
         long stateRevision = ArchaeologyJournalClientState.getStateRevision();
         boolean readingReady = ArchaeologyJournalClientState.isReadingReady();
         boolean readinessChanged = readingReady != lastReadingReady;
         lastReadingReady = readingReady;
         long names = ClientLootTableLanguageStore.revision();
         Language language = Language.getInstance();
-        boolean namesChanged = names != this.lastNameRevision || language != lastLanguage;
-        this.lastNameRevision = names;
-        this.lastLanguage = language;
-        boolean logChanged = logRevision != this.lastLogRevision;
-        this.lastLogRevision = logRevision;
-        boolean progressChanged = stateRevision != this.lastStateRevision;
-        boolean catalogChanged = catalogRevision != this.lastCatalogRevision;
+        boolean namesChanged = names != lastNameRevision || language != lastLanguage;
+        lastNameRevision = names;
+        lastLanguage = language;
+        boolean logChanged = logRevision != lastLogRevision;
+        lastLogRevision = logRevision;
+        boolean progressChanged = stateRevision != lastStateRevision;
         if (connectionChanged || progressChanged) {
-            this.lastStateRevision = stateRevision;
-            this.state = ArchaeologyJournalClientState.getState();
+            lastStateRevision = stateRevision;
+            state = ArchaeologyJournalClientState.getState();
         }
-        if (connectionChanged || catalogChanged) {
-            this.lastCatalogRevision = catalogRevision;
-            reloadCatalog();
-        }
-        if (connectionChanged || readinessChanged || namesChanged || catalogChanged || progressChanged) {
+        if (connectionChanged || catalogChanged) reloadCatalog();
+        long scenarioRevision = JournalClientConnection.scenario().projectionRevision();
+        boolean scenarioChanged = scenarioRevision != lastScenarioRevision;
+        lastScenarioRevision = scenarioRevision;
+        boolean candidatesChanged = scenarioChanged && refreshScenarioCandidates();
+        if (connectionChanged || readinessChanged || namesChanged || catalogChanged || progressChanged || candidatesChanged) {
             return Refresh.CONTENT;
         }
-        if (logChanged && this.currentSortOrder == CatalogSorter.SortOrder.UPDATE_TIME) return Refresh.ORDER;
-        return Refresh.NONE;
+        if (logChanged && currentSortOrder == CatalogSorter.SortOrder.UPDATE_TIME) {
+            return Refresh.ORDER;
+        }
+        return scenarioChanged ? Refresh.RIGHT_PAGE : Refresh.NONE;
+    }
+
+    // 场景结果可能带来运行时发现。概率变化保留目录，候选变化才更新搜索、计数与介绍。
+    private boolean refreshScenarioCandidates() {
+        var next = ArchaeologyJournalClientState.getCatalog();
+        if (next == visibleDefinitions) return false;
+        boolean changed = false;
+        for (var entry : next.entrySet()) {
+            ResourceLocation id = entry.getKey();
+            var previous = visibleDefinitions.get(id);
+            if (entry.getValue() == previous || sameCandidates(previous.items(), entry.getValue().items())) continue;
+            directItemsByTable.put(id, entry.getValue().items().stream().filter(CatalogQueryIndex::hasDirectSource).toList());
+            lowercaseTableItems.remove(id);
+            changed = true;
+        }
+        visibleDefinitions = next;
+        if (changed) {
+            subtreeItemsCache.clear();
+            gridDefinition = null;
+        }
+        return changed;
+    }
+
+    private static boolean sameCandidates(List<ItemDefinition> before, List<ItemDefinition> after) {
+        if (before.size() != after.size()) return false;
+        for (int index = 0; index < before.size(); index++) {
+            ItemDefinition a = before.get(index);
+            ItemDefinition b = after.get(index);
+            if (!a.signature().equals(b.signature()) || !a.displayName().equals(b.displayName())
+                    || CatalogQueryIndex.hasDirectSource(a) != CatalogQueryIndex.hasDirectSource(b)) return false;
+        }
+        return true;
     }
 
     /** 排序变化沿相同表和父路径恢复选中行。 */
@@ -391,13 +447,15 @@ public class JournalViewModel {
         int unlocked = 0;
         for (Map.Entry<ResourceLocation, TableDefinition> entry : this.catalogDefinitions.entrySet()) {
             ResourceLocation id = entry.getKey();
-            ArchaeologyJournalEntry view = ArchaeologyJournalEntry.of(id, entry.getValue(), this.state.getTable(id));
+            var progress = state.getTable(id);
+            ArchaeologyJournalEntry view = new ArchaeologyJournalEntry(id, ClientLootTableLanguageStore.displayName(id),
+                    entry.getValue().type(), directItemsByTable.get(id).size(), progress != null && progress.isUnlocked(),
+                    JournalUiPreferencesStore.isFavorite(id));
             this.allViews.put(id, view);
             if (view.unlocked()) unlocked++;
         }
         this.totalTableCount = this.allViews.size();
         this.globalUnlockedTableCount = unlocked;
-        rebuildRelationshipIndexes();
         rebuildCategories();
         this.expandedRoots.retainAll(this.catalogDefinitions.keySet());
         if (!this.categoryHome && this.currentSearch.isEmpty()
@@ -414,10 +472,7 @@ public class JournalViewModel {
     private void rebuildCategories() {
         this.categoryViews.clear();
         for (CatalogCategoryDefinition definition : this.structure.categories()) {
-            Set<ResourceLocation> members = this.categoryIdsByTable.entrySet().stream()
-                    .filter(entry -> entry.getValue().contains(definition.id()))
-                    .map(Map.Entry::getKey)
-                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            Set<ResourceLocation> members = membersByCategory.getOrDefault(definition.id(), Set.of());
             if (members.isEmpty()) continue;
             int unlocked = (int) members.stream().map(this.allViews::get)
                     .filter(view -> view != null && view.unlocked()).count();
@@ -516,11 +571,11 @@ public class JournalViewModel {
     private void syncNameCaches() {
         Language language = Language.getInstance();
         long overrides = ClientLootTableLanguageStore.revision();
-        if (this.nameCacheRevision == this.loadedCatalogRevision && this.nameCacheLanguage == language
+        if (this.nameCacheCatalog == this.catalogDefinitions && this.nameCacheLanguage == language
                 && this.nameOverrideRevision == overrides) {
             return;
         }
-        this.nameCacheRevision = this.loadedCatalogRevision;
+        this.nameCacheCatalog = this.catalogDefinitions;
         this.nameCacheLanguage = language;
         this.nameOverrideRevision = overrides;
         this.displayNameTexts.clear();
@@ -548,10 +603,9 @@ public class JournalViewModel {
     private List<JournalSearchQuery.LowercaseItem> lowercaseTableItems(ResourceLocation tableId) {
         syncNameCaches();
         return this.lowercaseTableItems.computeIfAbsent(tableId, id -> {
-            ArchaeologyJournalEntry view = this.allViews.get(id);
-            if (view == null) return List.of();
-            List<JournalSearchQuery.LowercaseItem> items = new ArrayList<>(view.items().size());
-            for (ArchaeologyEntryItem item : view.items()) {
+            List<ItemDefinition> definitions = directItemsByTable.get(id);
+            List<JournalSearchQuery.LowercaseItem> items = new ArrayList<>(definitions.size());
+            for (ItemDefinition item : definitions) {
                 items.add(JournalSearchQuery.LowercaseItem.of(item.id(), item.displayName().getString()));
             }
             return List.copyOf(items);
@@ -567,8 +621,7 @@ public class JournalViewModel {
             return true;
         }
         if (this.currentSearch.mode() == JournalSearchQuery.Mode.ITEM_NAME) {
-            return this.currentSearch.matchesTableByItemLowercase(view.id(),
-                    lowercaseTableName(view.id()), view.type(), lowercaseTableItems(view.id()));
+            return this.currentSearch.matchesAnyItem(lowercaseTableItems(view.id()));
         }
         return this.currentSearch.matchesTableLowercase(view.id(), lowercaseTableName(view.id()), view.type());
     }
@@ -582,14 +635,16 @@ public class JournalViewModel {
     private Comparator<ArchaeologyJournalEntry> rootComparator() {
         Comparator<ArchaeologyJournalEntry> base = sorter();
         if (this.currentSortOrder != CatalogSorter.SortOrder.FAVORITE) return base;
-        return Comparator.comparing((ArchaeologyJournalEntry view) -> !subtreeContainsFavorite(view.id()))
+        Set<ResourceLocation> favoriteAncestors = new HashSet<>();
+        ArrayDeque<ResourceLocation> pending = new ArrayDeque<>();
+        allViews.values().stream().filter(ArchaeologyJournalEntry::favorite).map(ArchaeologyJournalEntry::id)
+                .forEach(pending::addLast);
+        while (!pending.isEmpty()) {
+            ResourceLocation id = pending.removeFirst();
+            if (favoriteAncestors.add(id)) pending.addAll(parentIdsByChild.getOrDefault(id, List.of()));
+        }
+        return Comparator.comparing((ArchaeologyJournalEntry view) -> !favoriteAncestors.contains(view.id()))
                 .thenComparing(base);
-    }
-
-    private boolean subtreeContainsFavorite(ResourceLocation id) {
-        Set<ResourceLocation> members = new HashSet<>();
-        collectDescendants(id, members);
-        return members.stream().map(this.allViews::get).anyMatch(view -> view != null && view.favorite());
     }
 
     private void collectDescendants(ResourceLocation id, Set<ResourceLocation> output) {
@@ -598,12 +653,7 @@ public class JournalViewModel {
         if (table != null) table.childTables().forEach(child -> collectDescendants(child, output));
     }
 
-    // 关系索引只由目录定义与分类结构派生：目录 revision 未变时直接复用，逐字符/逐次选择不再重建
     private void rebuildRelationshipIndexes() {
-        if (this.relationshipIndexRevision == this.loadedCatalogRevision) {
-            return;
-        }
-        this.relationshipIndexRevision = this.loadedCatalogRevision;
         this.parentIdsByChild.clear();
         Map<ResourceLocation, LinkedHashSet<ResourceLocation>> parents = new LinkedHashMap<>();
         for (TableDefinition parent : this.catalogDefinitions.values()) {
@@ -616,18 +666,21 @@ public class JournalViewModel {
         parents.forEach((childId, parentIds) ->
                 this.parentIdsByChild.put(childId, List.copyOf(parentIds)));
 
-        this.categoryIdsByTable.clear();
-        this.structure.rootCategories().forEach((root, category) -> {
-            Set<ResourceLocation> members = new HashSet<>();
-            collectDescendants(root, members);
-            members.stream().filter(this.allViews::containsKey).forEach(id ->
-                    this.categoryIdsByTable.computeIfAbsent(id, ignored -> new LinkedHashSet<>()).add(category));
+        categoryIdsByTable.clear();
+        membersByCategory.clear();
+        structure.rootCategories().forEach((root, category) ->
+                collectDescendants(root, membersByCategory.computeIfAbsent(category, ignored -> new LinkedHashSet<>())));
+        membersByCategory.forEach((category, members) -> {
+            members.retainAll(catalogDefinitions.keySet());
+            for (ResourceLocation table : members) {
+                categoryIdsByTable.computeIfAbsent(table, ignored -> new LinkedHashSet<>()).add(category);
+            }
         });
     }
 
     // 从所有顶层入口同时逐层访问，直接收录的表优先保留自己的入口。
     private Map<ResourceLocation, List<ResourceLocation>> firstPathsByTable() {
-        if (this.firstPathsRevision != this.loadedCatalogRevision) {
+        if (this.firstPathsByTableCache == null) {
             Map<ResourceLocation, List<ResourceLocation>> result = new LinkedHashMap<>();
             List<ResourceLocation> roots = this.structure.rootCategories().keySet().stream().sorted().toList();
             roots.forEach(root -> result.put(root, List.of()));
@@ -644,7 +697,6 @@ public class JournalViewModel {
                 }
             }
             this.firstPathsByTableCache = Map.copyOf(result);
-            this.firstPathsRevision = this.loadedCatalogRevision;
         }
         return this.firstPathsByTableCache;
     }
@@ -661,93 +713,92 @@ public class JournalViewModel {
         return result;
     }
 
-    @Nullable
-    public BuildGridResult buildGridItems() {
-        ArchaeologyJournalEntry selected = selectedTable();
-        if (selected == null) {
-            this.gridCacheKey = null;
-            this.gridCacheResult = null;
+    /** 右页只投影当前表的场景定义及其直接子表的发现进度。 */
+    public @Nullable BuildGridResult buildGridItems() {
+        ResourceLocation table = selectedTableId();
+        if (table == null) {
+            gridDefinition = null;
+            gridCacheKey = null;
+            gridCacheResult = null;
             return null;
         }
-        // 缓存键覆盖格子装配的全部输入：表 id、目录定义版本、进度/日志版本、搜索（决定高亮）；
-        // 命中即返回上次装配好的不可变结果，方向键在同一表上来回移动不再重建
-        GridCacheKey key = new GridCacheKey(selected.id(), this.loadedCatalogRevision, this.lastStateRevision,
-                this.lastLogRevision, this.currentSearch.mode(), this.currentSearch.rawQuery());
-        if (key.equals(this.gridCacheKey) && this.gridCacheResult != null) {
-            return this.gridCacheResult;
-        }
-        BuildGridResult result = rebuildGridItems(selected);
-        this.gridCacheKey = key;
-        this.gridCacheResult = result;
-        return result;
+        TableDefinition definition = visibleDefinitions.get(table);
+        var progress = state.getTable(table);
+        var childProgress = definition.childTableProbabilities().stream()
+                .map(child -> state.getTable(child.tableId())).toList();
+        GridCacheKey key = new GridCacheKey(progress, childProgress, lastNameRevision, lastLanguage, currentSearch.rawQuery());
+        if (definition == gridDefinition && key.equals(gridCacheKey)) return gridCacheResult;
+
+        gridCacheResult = rebuildGridItems(definition, progress);
+        gridCacheKey = key;
+        gridDefinition = definition;
+        return gridCacheResult;
     }
 
-    // 装配网格数据；返回的列表一律不可变，可安全交给缓存与面板复用
-    private BuildGridResult rebuildGridItems(ArchaeologyJournalEntry selected) {
-        TableDefinition selectedDefinition = this.catalogDefinitions.get(selected.id());
-        int simulationCount = selectedDefinition != null ? selectedDefinition.simulationCount() : 0;
+    private BuildGridResult rebuildGridItems(TableDefinition definition, @Nullable ArchaeologyJournalState.TableProgress stored) {
+        ResourceLocation table = definition.id();
+        var progress = ArchaeologyJournalClientState.projectProgress(table, stored);
         List<ItemGridPanel.GridItem> gridItems = new ArrayList<>();
-        for (ArchaeologyEntryItem item : selected.items()) {
-            ItemGridPanel.GridItem gridItem = buildDirectGridItem(item, simulationCount);
-            if (gridItem != null) {
-                gridItems.add(gridItem);
+        Set<ResourceLocation> luckAffectedChildren = new HashSet<>();
+        for (ItemDefinition item : definition.items()) {
+            List<LootAcquisitionPath> direct = new ArrayList<>();
+            for (LootAcquisitionPath path : item.acquisitionPaths()) {
+                if (path.sourceChildTable() == null) direct.add(path);
+                else if (path.luckAffected()) luckAffectedChildren.add(path.sourceChildTable());
+            }
+            if (item.acquisitionPaths().isEmpty() || !direct.isEmpty()) {
+                gridItems.add(buildDirectGridItem(item, List.copyOf(direct), progress, definition.simulationCount()));
             }
         }
-        gridItems.sort(Comparator.comparing(ItemGridPanel.GridItem::primarySourceChildTable,
-                        Comparator.nullsFirst(Comparator.comparing(String::valueOf)))
-                .thenComparingDouble(value -> -gridItemSortKey(value)));
+        gridItems.sort(Comparator.comparingDouble(item -> -gridItemSortKey(item)));
+
         List<ItemGridPanel.ChildTableEntry> childEntries = new ArrayList<>();
-        if (selectedDefinition != null) {
-            for (ChildTableProbability childProbability : selectedDefinition.childTableProbabilities()) {
-                ArchaeologyJournalEntry child = this.allViews.get(childProbability.tableId());
-                if (child == null) continue;
-                List<DetailOverlayPanel.IntroItem> discoveredItems = buildIntroItems(child.id()).stream()
-                        .filter(DetailOverlayPanel.IntroItem::unlocked).toList();
-                List<ItemStack> previewItems = discoveredItems.stream().limit(3)
-                        .map(DetailOverlayPanel.IntroItem::stack).toList();
-                childEntries.add(new ItemGridPanel.ChildTableEntry(
-                        child.id(), child.displayName(), !discoveredItems.isEmpty(),
-                        // 子表入口与物品同口径：读服务端派生的当前输入状态，不再取跨场景最大值
-                        childProbability.probability(),
-                        // 入口条件由服务端派生（路径共同条件 + 注入边门槛）：注入边不在任何 JSON 里，
-                        // 客户端从物品路径本地重推必然漏掉它，泥地打捞入口就曾因此没有原因可讲
-                        childProbability.conditions(), previewItems,
-                        selectedDefinition.items().stream()
-                                .flatMap(item -> item.acquisitionPaths().stream())
-                                .anyMatch(path -> child.id().equals(path.sourceChildTable()) && path.luckAffected()),
-                        selectedDefinition.simulationCount()));
-            }
+        for (ChildTableProbability child : definition.childTableProbabilities()) {
+            if (!catalogDefinitions.containsKey(child.tableId())) continue;
+            List<ItemStack> preview = childPreview(child.tableId());
+            childEntries.add(new ItemGridPanel.ChildTableEntry(child.tableId(),
+                    ClientLootTableLanguageStore.displayName(child.tableId()), !preview.isEmpty(),
+                    child.probability(), child.conditions(), preview, luckAffectedChildren.contains(child.tableId()),
+                    definition.simulationCount()));
         }
-        List<DetailOverlayPanel.IntroItem> introItems = buildIntroItems(selected.id());
-        List<ItemDefinition> required = CatalogQueryIndex.completionItems(this.catalogDefinitions, selected.id());
-        ArchaeologyJournalState.TableProgress progress =
-                ArchaeologyJournalClientState.projectProgress(selected.id(), this.state.getTable(selected.id()));
+        List<ItemDefinition> required = completionItemsCache.computeIfAbsent(table,
+                id -> CatalogQueryIndex.completionItems(catalogDefinitions, id));
         int parsedCount = progress == null ? 0 : (int) required.stream()
                 .filter(item -> progress.isItemUnlocked(item.signature())).count();
-        return new BuildGridResult(selected.id(), List.copyOf(gridItems), List.copyOf(childEntries), introItems,
-                parsedCount, required.size());
+        return new BuildGridResult(table, List.copyOf(gridItems), List.copyOf(childEntries),
+                buildIntroItems(table, stored, progress), parsedCount, required.size());
     }
 
-    // 表子树物品闭包：CatalogQueryIndex.subtreeItems 是一次整棵子树的 DFS，选中表与每个直接子表各调一次；
-    // 按目录 revision 缓存，目录未变时复用同一份不可变列表
     private List<ItemDefinition> subtreeItems(ResourceLocation tableId) {
-        if (this.subtreeItemsRevision != this.loadedCatalogRevision) {
-            this.subtreeItemsCache.clear();
-            this.subtreeItemsRevision = this.loadedCatalogRevision;
+        return subtreeItemsCache.computeIfAbsent(tableId, id -> CatalogQueryIndex.subtreeItems(visibleDefinitions, id));
+    }
+
+    private List<ItemStack> childPreview(ResourceLocation table) {
+        var stored = state.getTable(table);
+        if (stored == null) return List.of();
+        var progress = ArchaeologyJournalClientState.projectProgress(table, stored);
+        List<ItemStack> preview = new ArrayList<>(CHILD_PREVIEW_SIZE);
+        List<ItemDefinition> definitions = subtreeItems(table);
+        for (ItemDefinition item : definitions) {
+            if (progress.isItemUnlocked(item.signature())) {
+                preview.add(DetailOverlayPanel.IntroItem.previewStack(item.id(), item.signature()));
+                if (preview.size() == CHILD_PREVIEW_SIZE) return List.copyOf(preview);
+            }
         }
-        return this.subtreeItemsCache.computeIfAbsent(tableId,
-                id -> CatalogQueryIndex.subtreeItems(this.catalogDefinitions, id));
+        for (var signature : historicalItems(stored, definitions)) {
+            preview.add(DetailOverlayPanel.IntroItem.previewStack(signature.itemId(), signature));
+            if (preview.size() == CHILD_PREVIEW_SIZE) break;
+        }
+        return List.copyOf(preview);
     }
 
     // Intro 按需映射当前表及全部后代物品，避免在每个树节点重复缓存完整子树视图。
-    private List<DetailOverlayPanel.IntroItem> buildIntroItems(ResourceLocation tableId) {
+    private List<DetailOverlayPanel.IntroItem> buildIntroItems(ResourceLocation tableId,
+            @Nullable ArchaeologyJournalState.TableProgress storedProgress,
+            @Nullable ArchaeologyJournalState.TableProgress progress) {
         List<ItemDefinition> definitions = subtreeItems(tableId);
-        ArchaeologyJournalState.TableProgress storedProgress = this.state.getTable(tableId);
-        ArchaeologyJournalState.TableProgress progress = ArchaeologyJournalClientState.projectProgress(tableId, storedProgress);
         List<DetailOverlayPanel.IntroItem> result = new ArrayList<>(definitions.size());
-        Set<LootResultSignature> currentSignatures = new HashSet<>();
         for (ItemDefinition definition : definitions) {
-            currentSignatures.add(definition.signature());
             ArchaeologyJournalState.ItemProgress itemProgress = progress != null
                     ? progress.getItemProgress(definition.signature()) : null;
             boolean unlocked = itemProgress != null && itemProgress.isUnlocked();
@@ -758,13 +809,11 @@ public class JournalViewModel {
                     definition.id(), definition.displayName(), definition.signature(), unlocked, count, highlighted));
         }
         if (storedProgress != null) {
-            for (LootResultSignature signature : storedProgress.getItemSignatures()) {
-                if (signature.type() != LootResultSignature.SignatureType.PLAIN || currentSignatures.contains(signature)
-                        || !storedProgress.isItemUnlocked(signature)) continue;
+            for (LootResultSignature signature : historicalItems(storedProgress, definitions)) {
                 ResourceLocation itemId = signature.itemId();
                 Component name = BuiltInRegistries.ITEM.get(itemId).getDescription();
                 Component history = Component.translatable("screen.unsuspiciousblock.archaeology_journal.item_history", name);
-                boolean highlighted = this.currentSearch.matchesItem(itemId, name.getString());
+                boolean highlighted = currentSearch.matchesItem(itemId, name.getString());
                 result.add(new DetailOverlayPanel.IntroItem(itemId, history, signature, true,
                         storedProgress.getItemCount(signature), highlighted));
             }
@@ -772,23 +821,25 @@ public class JournalViewModel {
         return List.copyOf(result);
     }
 
-    @Nullable
-    private ItemGridPanel.GridItem buildDirectGridItem(ArchaeologyEntryItem item, int simulationCount) {
-        List<LootAcquisitionPath> directPaths = item.acquisitionPaths().stream()
-                .filter(path -> path.sourceChildTable() == null)
-                .toList();
-        if (!item.acquisitionPaths().isEmpty() && directPaths.isEmpty()) {
-            return null;
-        }
-        boolean highlighted = this.currentSearch.mode() != JournalSearchQuery.Mode.ITEM_NAME
-                || this.currentSearch.matchesItem(item.id(), item.displayName().getString());
-        // 等级来自条目自身（服务端同一份判定），不再在客户端另起规则、也不再比较 tooltip 文案
-        LootConditionHandler.UncertaintyLevel level = item.uncertaintyLevel();
-        // 概率直接读服务端派生的当前输入状态（可适用性 × 计算状态），客户端不再跨场景取最大值：
-        // 取最大值等于把"你站在沼泽里"那个数当作你的处境展示（D1）。
+    private static Iterable<LootResultSignature> historicalItems(ArchaeologyJournalState.TableProgress stored,
+                                                                List<ItemDefinition> definitions) {
+        Set<LootResultSignature> current = new HashSet<>();
+        definitions.forEach(item -> current.add(item.signature()));
+        return () -> stored.getItemSignatures().stream()
+                .filter(signature -> signature.type() == LootResultSignature.SignatureType.PLAIN
+                        && !current.contains(signature) && stored.isItemUnlocked(signature))
+                .iterator();
+    }
+
+    private ItemGridPanel.GridItem buildDirectGridItem(ItemDefinition item, List<LootAcquisitionPath> directPaths,
+            @Nullable ArchaeologyJournalState.TableProgress progress, int simulationCount) {
+        boolean highlighted = currentSearch.mode() != JournalSearchQuery.Mode.ITEM_NAME
+                || currentSearch.matchesItem(item.id(), item.displayName().getString());
+        boolean unlocked = progress != null && progress.isItemUnlocked(item.signature());
+        int count = progress == null ? 0 : progress.getItemCount(item.signature());
         return new ItemGridPanel.GridItem(item.id(), item.displayName(), item.tooltipHint(),
-                item.probability(), item.unlocked(), item.count(), item.signature(), highlighted,
-                directPaths, item.injected(), level,
+                item.probability(), unlocked, count, item.signature(), highlighted,
+                directPaths, item.injected(), item.uncertaintyLevel(),
                 DeclaredChance.fromPaths(directPaths), simulationCount, item.observedFunctions());
     }
 
@@ -822,16 +873,16 @@ public class JournalViewModel {
             if (this.tableViews.get(index).id().equals(id)
                     && this.rowMetadata.get(index).parentPath().equals(parentPath)) return index;
         }
-        return findNavigationRow(id, null);
+        return findNavigationRow(id);
     }
 
     private record RowMeta(int depth, boolean child, boolean hasChildren, boolean expanded,
                            List<ResourceLocation> parentPath, List<ResourceLocation> categoryIds) {
     }
 
-    // 网格缓存键：表 id + 目录定义版本 + 进度/日志版本 + 搜索模式与原始输入（共同决定格子高亮）
-    private record GridCacheKey(ResourceLocation tableId, long catalogRevision, long stateRevision,
-                                long logRevision, JournalSearchQuery.Mode searchMode, String searchRawQuery) {
+    private record GridCacheKey(@Nullable ArchaeologyJournalState.TableProgress progress,
+                                List<ArchaeologyJournalState.TableProgress> childProgress,
+                                long nameRevision, Language language, String search) {
     }
 
     public record BuildGridResult(ResourceLocation tableId, List<ItemGridPanel.GridItem> gridItems,

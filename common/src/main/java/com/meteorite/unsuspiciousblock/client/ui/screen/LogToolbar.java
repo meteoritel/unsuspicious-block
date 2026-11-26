@@ -11,7 +11,6 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.network.chat.Component;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -34,7 +33,9 @@ public class LogToolbar {
     private UiControl executeBatchBtn;
     private Runnable onToggleBatch = () -> {
     };
-    private final List<UiControl> toolbarButtons = new ArrayList<>();
+    private UiControl clearAllBtn;
+    private UiControl clearTableBtn;
+    private UiControl retentionBtn;
 
     public LogToolbar() {
     }
@@ -65,7 +66,7 @@ public class LogToolbar {
      */
     public void toggleSortDirection(LogPanel logPanel) {
         this.sortDescending = !this.sortDescending;
-        logPanel.setSortDescending(this.sortDescending);
+        logPanel.setView(sortDescending, groupMode);
         if (this.sortDirBtn != null) {
             JournalControls.configureIcon(sortDirBtn, sortDirectionIcon(sortDescending),
                     sortDirectionTooltipLines(sortDescending), () -> toggleSortDirection(logPanel));
@@ -77,7 +78,7 @@ public class LogToolbar {
      */
     public void cycleGroupMode(LogPanel logPanel) {
         this.groupMode = this.groupMode.next();
-        logPanel.setGroupMode(this.groupMode);
+        logPanel.setView(sortDescending, groupMode);
         if (this.groupBtn != null) {
             JournalControls.configureIcon(groupBtn, groupModeIcon(groupMode),
                     groupModeTooltipLines(groupMode), () -> cycleGroupMode(logPanel));
@@ -117,10 +118,8 @@ public class LogToolbar {
                               LogPanel logPanel,
                               Runnable onOpenRetention, Runnable onToggleBatch, Runnable onExecuteBatch,
                               Runnable onClearTable, Runnable onClearAll) {
-        logPanel.setSortDescending(this.sortDescending);
-        logPanel.setGroupMode(this.groupMode);
+        logPanel.setView(sortDescending, groupMode);
         this.onToggleBatch = onToggleBatch;
-        this.toolbarButtons.clear();
         int logToolbarY = bookLayout.rightPageY() + JournalLayout.LOG_LIST_LABEL_Y
                 + (JournalLayout.LOG_SORT_ICON_SIZE - JournalLayout.SEARCH_QUICK_BAR_HEIGHT) / 2;
         int logToolbarLeftX = bookLayout.rightPageX() + 8;
@@ -149,7 +148,7 @@ public class LogToolbar {
 
         // 清空操作与右侧视图设置排成一行。
         int clearAllX = logGroupX - JournalLayout.LOG_TOOLBAR_GAP - JournalLayout.LOG_GROUP_ICON_SIZE;
-        UiControl clearAllBtn = JournalControls.iconButton(
+        this.clearAllBtn = JournalControls.iconButton(
                 clearAllX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
                 UiAtlas.Icon.TRASH_FULL,
@@ -158,7 +157,7 @@ public class LogToolbar {
         registerToolbarButton(screen, clearAllBtn);
 
         int clearTableX = clearAllX - JournalLayout.LOG_TOOLBAR_GAP - JournalLayout.LOG_GROUP_ICON_SIZE;
-        UiControl clearTableBtn = JournalControls.iconButton(
+        this.clearTableBtn = JournalControls.iconButton(
                 clearTableX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
                 UiAtlas.Icon.TRASH_EMPTY,
@@ -188,7 +187,7 @@ public class LogToolbar {
                 onToggleBatch);
         registerToolbarButton(screen, this.batchSelectBtn);
 
-        UiControl retentionBtn = JournalControls.iconButton(
+        this.retentionBtn = JournalControls.iconButton(
                 logToolbarLeftX, logToolbarY,
                 JournalLayout.LOG_GROUP_ICON_SIZE,
                 UiAtlas.Icon.GEAR,
@@ -229,23 +228,32 @@ public class LogToolbar {
     // 所有日志工具栏按钮均从隐藏状态注册，只允许 syncVisibility 决定是否显示。
     private void registerToolbarButton(ArchaeologyJournalScreen screen, UiControl button) {
         button.setVisible(false);
-        this.toolbarButtons.add(button);
         screen.registerWidget(button);
     }
 
     /**
      * 同步日志工具栏 widget 可见性
      */
-    public void syncVisibility(boolean toolbarVisible, boolean batchSelectionMode, int selectedEntryCount) {
-        this.toolbarButtons.forEach(button -> button.setVisible(toolbarVisible));
-        if (batchSelectBtn != null) {
+    public void syncVisibility(boolean listReady, boolean tableEditable, boolean hasEntries, boolean hasAnyLogs,
+                               boolean canEdit, boolean batchSelectionMode, int selectedEntryCount) {
+        if (sortDirBtn == null) return;
+        boolean showEntries = listReady && hasEntries;
+        sortDirBtn.setVisible(showEntries);
+        groupBtn.setVisible(showEntries);
+        retentionBtn.setVisible(listReady && tableEditable);
+        retentionBtn.setEnabled(canEdit);
+        clearTableBtn.setVisible(showEntries);
+        clearTableBtn.setEnabled(canEdit);
+        clearAllBtn.setVisible(listReady && hasAnyLogs);
+        clearAllBtn.setEnabled(canEdit);
+        batchSelectBtn.setVisible(listReady && (hasEntries || batchSelectionMode));
+        if (batchSelectBtn.isSelected() != batchSelectionMode) {
+            batchSelectBtn.setSelected(batchSelectionMode);
             JournalControls.configureIcon(batchSelectBtn, batchSelectionMode ? UiAtlas.Icon.GROUP : UiAtlas.Icon.SQUARE,
                     batchSelectTooltipLines(batchSelectionMode), onToggleBatch::run);
         }
-        if (this.executeBatchBtn != null) {
-            this.executeBatchBtn.setVisible(toolbarVisible && batchSelectionMode);
-            this.executeBatchBtn.setEnabled(selectedEntryCount > 0);
-        }
+        executeBatchBtn.setVisible(showEntries && batchSelectionMode);
+        executeBatchBtn.setEnabled(canEdit && selectedEntryCount > 0);
     }
 
 }

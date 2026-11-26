@@ -93,6 +93,8 @@ public final class JournalLogNoteEditScreen extends UiThemedScreen {
         UUID id = UUID.randomUUID();
         if (!JournalClientConnection.expectEdit(id, JournalLogEditResultPayload.Operation.NOTE, tableId, this::finish)) return;
         pending = id;
+        validationMessage = null;
+        editor.setEditable(false);
         save.setEnabled(false);
         ClientNetwork.sendToServer(new UpdateJournalLogNotePayload(id, tableId, entryId, editor.value()));
     }
@@ -105,6 +107,7 @@ public final class JournalLogNoteEditScreen extends UiThemedScreen {
             return;
         }
         validationMessage = JournalClientConnection.editMessage(result);
+        editor.setEditable(true);
         save.setEnabled(true);
     }
 

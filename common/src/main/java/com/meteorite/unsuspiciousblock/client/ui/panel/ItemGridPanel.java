@@ -811,9 +811,6 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
         for (GridItem item : this.items) {
             boolean hasDirectPath = item.acquisitionPaths().isEmpty();
             for (LootAcquisitionPath path : item.acquisitionPaths()) {
-                if (path.sourceChildTable() != null) {
-                    continue;
-                }
                 ResourceLocation tagId = path.sourceItemTag();
                 if (tagId == null) {
                     hasDirectPath = true;
@@ -922,18 +919,6 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
                            List<DeclaredChance> declaredChances,
                            int simulationCount,
                            @Nullable FunctionObservationSummary observedFunctions) implements GridContent {
-
-        @Nullable
-        public ResourceLocation primarySourceChildTable() {
-            if (this.acquisitionPaths.stream().anyMatch(path -> path.sourceChildTable() == null)) {
-                return null;
-            }
-            return this.acquisitionPaths.stream()
-                    .map(LootAcquisitionPath::sourceChildTable)
-                    .filter(Objects::nonNull)
-                    .findFirst()
-                    .orElse(null);
-        }
 
         public ItemStack stack() {
             if (this.signature != null) {

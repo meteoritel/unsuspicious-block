@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /** 日志详情面板——标签值元信息卡片、增强型战利品收集清单（角标+总进度条） */
@@ -149,6 +150,9 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
     }
 
     public void setEntry(@Nullable ExcavationLogEntry entry, @Nullable ResourceLocation tableId) {
+        if (Objects.equals(this.tableId, tableId) && Objects.equals(this.entry, entry)) return;
+        boolean sameEntry = this.entry != null && entry != null && Objects.equals(this.tableId, tableId)
+                && this.entry.entryId().equals(entry.entryId());
         this.entry = entry;
         this.tableId = tableId;
         this.cachedLoot = entry != null ? buildLootDisplay(entry) : List.of();
@@ -161,7 +165,8 @@ public final class LogDetailPanel implements PagePanel, UiInputContainer {
         contentDirty = true;
         this.hoveredMetaRow = -1;
         Arrays.fill(this.metaRowScrollTicks, 0);
-        this.pagination.reset();
+        if (sameEntry) this.pagination.pageCount();
+        else this.pagination.reset();
     }
 
     // 创建并注册返回列表按钮（kit 控件），由外部 screen.rebuildWidgets 调用

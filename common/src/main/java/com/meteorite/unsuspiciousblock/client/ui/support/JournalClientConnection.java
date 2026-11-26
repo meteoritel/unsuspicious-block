@@ -98,15 +98,20 @@ public final class JournalClientConnection {
         if (session != null && session.edit != null && session.edit.id.equals(id)) session.edit = null;
     }
 
+    /** 当前连接的日志写操作在等待回执或对应修订。 */
+    public static boolean isEditPending() {
+        Session session = current;
+        return session != null && session.edit != null;
+    }
+
     /** 删除确认将同一身份的所有片交给服务端受理。 */
-    public static boolean delete(List<DeleteJournalLogPayload> pieces) {
+    public static void delete(List<DeleteJournalLogPayload> pieces) {
         DeleteJournalLogPayload first = pieces.getFirst();
         if (!expectEdit(first.requestId(), Operation.DELETE, first.tableId(), result -> editNotifier.accept(
                 result.result() == Result.APPLIED
                         ? Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.success", result.removedCount())
-                        : editMessage(result)))) return false;
+                        : editMessage(result)))) return;
         pieces.forEach(ClientNetwork::sendToServer);
-        return true;
     }
 
     public static void registerLogEditNotifier(Consumer<Component> notifier) {

@@ -24,6 +24,12 @@ public final class CatalogQueryIndex {
         return subtreeItems(tables, tableId, item -> true);
     }
 
+    /** 无路径的候选和有直属路径的物品都属于当前表的网格与搜索。 */
+    public static boolean hasDirectSource(ItemDefinition item) {
+        return item.acquisitionPaths().isEmpty()
+                || item.acquisitionPaths().stream().anyMatch(path -> path.sourceChildTable() == null);
+    }
+
     /** 获取表及后代因排除组件而折叠的物品。 */
     public static Set<ResourceLocation> foldedItems(Map<ResourceLocation, TableDefinition> tables,
             Map<ResourceLocation, Set<ResourceLocation>> folded, ResourceLocation tableId) {

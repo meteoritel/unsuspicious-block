@@ -1,6 +1,5 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.unsuspiciousblock.client.ui.entry.ItemEntryLike;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -103,12 +102,7 @@ public final class JournalSearchQuery {
         return this.mode == Mode.TABLE_NAME && id.toString().equals(this.normalizedQuery);
     }
 
-    // 判断目录条目（战利品表）是否匹配此查询
-    public boolean matchesCatalogEntry(ResourceLocation id, String displayName, String type) {
-        return matchesTableLowercase(id, displayName.toLowerCase(Locale.ROOT), type);
-    }
-
-    // 表级匹配（显示名已由调用方小写化）：与 matchesCatalogEntry 同一口径，只省掉重复的 toLowerCase
+    // 表级匹配读取已归一化的显示名。
     public boolean matchesTableLowercase(ResourceLocation id, String lowercaseDisplayName, String type) {
         if (this.isEmpty()) return true;
         return switch (this.mode) {
@@ -146,38 +140,12 @@ public final class JournalSearchQuery {
         };
     }
 
-    // 判断整个战利品表是否因含有匹配物品而匹配此查询
-    public boolean matchesTableByItem(ResourceLocation tableId, String tableDisplayName,
-                                      String type, Iterable<? extends ItemEntryLike> items) {
-        if (this.isEmpty()) return true;
-        return switch (this.mode) {
-            case TABLE_NAME, NAMESPACE, TYPE -> matchesCatalogEntry(tableId, tableDisplayName, type);
-            case ITEM_NAME -> {
-                for (ItemEntryLike item : items) {
-                    if (matchesItem(item.itemId(), item.itemDisplayName())) {
-                        yield true;
-                    }
-                }
-                yield false;
-            }
-        };
-    }
-
-    // 表级物品搜索：表名与物品文本均已小写化（物品文本可由宿主按目录 revision 预建）
-    public boolean matchesTableByItemLowercase(ResourceLocation tableId, String lowercaseDisplayName, String type,
-                                               Iterable<LowercaseItem> items) {
-        if (this.isEmpty()) return true;
-        return switch (this.mode) {
-            case TABLE_NAME, NAMESPACE, TYPE -> matchesTableLowercase(tableId, lowercaseDisplayName, type);
-            case ITEM_NAME -> {
-                for (LowercaseItem item : items) {
-                    if (matchesItemLowercase(item)) {
-                        yield true;
-                    }
-                }
-                yield false;
-            }
-        };
+    /** 用已归一化的直属候选执行物品搜索。 */
+    public boolean matchesAnyItem(Iterable<LowercaseItem> items) {
+        for (LowercaseItem item : items) {
+            if (matchesItemLowercase(item)) return true;
+        }
+        return false;
     }
 
     /**

@@ -49,7 +49,7 @@ flowchart LR
 
 ### 2.1 客户端笔记偏好
 
-`JournalReadingStateCodec` 以 `uiPreferencesVersion` 管理 `journal_ui_preferences.dat`：无版本视为 v0，迁移在副本中加入阅读默认值后标记 v1。保留根 `lastSelectedTable`、`lastRightPageTab`、排序/搜索/收藏与 `simulationPreferences`，已有 `panels.scenario.conditionOffsets` 仍按表 ID 保存有界偏移。
+`JournalReadingStateCodec` 以 `uiPreferencesVersion` 管理 `journal_ui_preferences.dat`：无版本视为 v0，迁移在副本中加入阅读默认值后标记 v1。保留根 `lastSelectedTable`、`lastRightPageTab`、排序、过滤、收藏与 `simulationPreferences`，已有 `panels.scenario.conditionOffsets` 仍按表 ID 保存有界偏移。
 
 `simulationPreferences` 保存各表已提交的条件与参数；`ScenarioSession` 通过现有 store 恢复和写入。请求票据、内容版本内的分支引用、版本化草稿和单表快照属于连接内状态，断线时随会话退役。会话的归属与提交规则见[笔记 GUI 内部机制](../internals/journal-ui-internals.md#4-场景条件页与文档动作)。
 

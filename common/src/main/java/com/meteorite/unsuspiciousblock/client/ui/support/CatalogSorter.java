@@ -61,7 +61,7 @@ public final class CatalogSorter {
                     .thenComparing(v -> v.id().getNamespace())
                     .thenComparing(displayName);
             case ITEM_COUNT -> Comparator
-                    .comparingInt((ArchaeologyJournalEntry v) -> v.items().size()).reversed()
+                    .comparingInt(ArchaeologyJournalEntry::itemCount).reversed()
                     .thenComparing(v -> !"minecraft".equals(v.id().getNamespace()))
                     .thenComparing(v -> v.id().getNamespace())
                     .thenComparing(displayName);

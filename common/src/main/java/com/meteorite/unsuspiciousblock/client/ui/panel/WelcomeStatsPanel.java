@@ -14,10 +14,9 @@ import com.meteorite.meteosuikit.api.layout.UiLayoutNode;
 import com.meteorite.meteosuikit.api.layout.UiGridMetrics;
 import com.meteorite.meteosuikit.api.render.UiIcon;
 import net.minecraft.client.Minecraft;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
+import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalFormatHelper;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import com.meteorite.unsuspiciousblock.core.world.GameTimeFormatHelper;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -44,7 +43,7 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
     private JournalBookBackground.BookLayout layout;
     private long lastConnectionEpoch = Long.MIN_VALUE;
     private long lastLogRevision = Long.MIN_VALUE;
-    private long lastCatalogRevision = Long.MIN_VALUE;
+    private long lastNameRevision = Long.MIN_VALUE;
     private long lifetimeEntries;
     private int currentEntries;
     private int notedEntries;
@@ -185,8 +184,8 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
     private void refreshSnapshot() {
         long epoch = JournalClientConnection.epoch();
         long logRevision = JournalClientConnection.log().summaryRevision();
-        long catalogRevision = ArchaeologyJournalClientState.getCatalogRevision();
-        if (epoch == this.lastConnectionEpoch && logRevision == this.lastLogRevision && catalogRevision == this.lastCatalogRevision) {
+        long nameRevision = ClientLootTableLanguageStore.revision();
+        if (epoch == this.lastConnectionEpoch && logRevision == this.lastLogRevision && nameRevision == this.lastNameRevision) {
             return;
         }
 
@@ -202,10 +201,7 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
         } else {
             int day = GameTimeFormatHelper.fromTime(
                     latest.updated().gameTime(), latest.updated().dayTime()).day();
-            TableDefinition definition = ArchaeologyJournalClientState.getCatalog().get(latest.tableId());
-            Component tableName = definition != null
-                    ? definition.displayName()
-                    : Component.literal(latest.tableId().getPath().replace('_', ' '));
+            Component tableName = ClientLootTableLanguageStore.displayName(latest.tableId());
             this.latestRecord = Component.translatable(
                     "screen.unsuspiciousblock.archaeology_journal.welcome.latest_record_value", day, tableName);
             ArrayList<ItemStack> itemStacks = new ArrayList<>();
@@ -220,7 +216,7 @@ public final class WelcomeStatsPanel implements UiInputTarget, UiLayoutSource {
 
         this.lastConnectionEpoch = epoch;
         this.lastLogRevision = logRevision;
-        this.lastCatalogRevision = catalogRevision;
+        this.lastNameRevision = nameRevision;
     }
 
     private static void drawMetricCard(GuiGraphics graphics, Font font, int x, int y, int width,

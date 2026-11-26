@@ -302,8 +302,13 @@ public final class DetailOverlayPanel implements PagePanel {
     public record IntroItem(ResourceLocation id, Component displayName, LootResultSignature signature,
                             boolean unlocked, int count, boolean highlighted) {
         public ItemStack stack() {
-            ItemStack preview = this.signature.createPreviewStack();
-            return preview.isEmpty() ? new ItemStack(BuiltInRegistries.ITEM.get(this.id)) : preview;
+            return previewStack(id, signature);
+        }
+
+        /** 介绍与子表预览使用相同的签名图标。 */
+        public static ItemStack previewStack(ResourceLocation id, LootResultSignature signature) {
+            ItemStack preview = signature.createPreviewStack();
+            return preview.isEmpty() ? new ItemStack(BuiltInRegistries.ITEM.get(id)) : preview;
         }
     }
 }

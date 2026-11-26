@@ -33,10 +33,14 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -46,6 +50,7 @@ import java.util.function.Consumer;
 public final class LogPanel implements PagePanel, UiInputContainer {
     private final UiControlGroup controls = new UiControlGroup();
     private boolean controlsDirty = true;
+    private boolean noteEditingAvailable;
     private Consumer<ExcavationLogEntry> onOpenEntry = entry -> {
     };
 
@@ -72,6 +77,10 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         if (!controlsDirty) return;
         controlsDirty = false;
         controls.beginUpdate();
+        if (loadStatus != JournalMirror.Status.READY) {
+            controls.endUpdate();
+            return;
+        }
         int bgX = layout.rightPageX() + 4;
         int y = layout.rightPageY() + JournalLayout.LOG_LIST_TOP;
         IntRange visible = computeVisibleRows(pagination.getPage());
@@ -82,7 +91,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
                     UiControl group = controls.obtain("group:" + groupName);
                     group.setBounds(bgX, y, JournalLayout.LOG_ENTRY_TEXTURE_WIDTH, row.height());
                     JournalControls.configureHotspot(group, LogGrouper.groupHeader(groupMode, groupName, entries.size()),
-                            () -> toggleGroupSelection(entries));
+                            () -> toggleGroupSelection(groupName, entries));
                 }
             } else if (row instanceof EntryRow(LogEntryState state)) {
                 UiControl entry = controls.obtain(state.entry.entryId());
@@ -110,6 +119,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
                                 () -> {
                                     if (noteClickHandler != null) noteClickHandler.accept(state.entry);
                                 });
+                        note.setEnabled(noteEditingAvailable);
                     }
                 }
             }
@@ -139,12 +149,12 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     // 空态等弱化文本：原字面量 #7A6247 在书页底色 #E8DCBC 上只有 4.20:1，改引语义色表 LABEL（5.03:1）
     private static final int MUTED_COLOR = UiTextScheme.PARCHMENT.label();
     private static final int SELECTED_TEXT_COLOR = JournalTextColors.SELECTED;
-    private static final Comparator<LogEntryState> ENTRY_TIME_ORDER = Comparator
-            .comparingLong((LogEntryState state) -> state.entry.lastUpdatedGameTime())
-            .thenComparingLong(state -> state.entry.lastUpdatedDayTime())
-            .thenComparingLong(state -> state.entry.createdGameTime())
-            .thenComparingLong(state -> state.entry.createdDayTime())
-            .thenComparing(state -> state.entry.entryId());
+    private static final Comparator<ExcavationLogEntry> ENTRY_TIME_ORDER = Comparator
+            .comparingLong(ExcavationLogEntry::lastUpdatedGameTime)
+            .thenComparingLong(ExcavationLogEntry::lastUpdatedDayTime)
+            .thenComparingLong(ExcavationLogEntry::createdGameTime)
+            .thenComparingLong(ExcavationLogEntry::createdDayTime)
+            .thenComparing(ExcavationLogEntry::entryId);
 
     // 备注图标点击回调（由外部 screen 设置，打开备注编辑界面）
     @Nullable
@@ -196,9 +206,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         return ranges;
     }
 
-    /**
-     * 组头行——不可点击，显示组名 + 条目数
-     */
+    /** 显示组名和条目数，批选模式下可操作整组。 */
     private record GroupHeaderRow(String groupName, List<LogEntryState> entries) implements DisplayRow {
 
         @Override
@@ -219,7 +227,11 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     }
 
     private JournalBookBackground.BookLayout layout;
-    private final List<LogEntryState> allEntries = new ArrayList<>();
+    private final Map<UUID, LogEntryState> entriesById = new HashMap<>();
+    private final NavigableSet<LogEntryState> timeOrder = new TreeSet<>(Comparator.comparing(state -> state.entry, ENTRY_TIME_ORDER));
+    private long historyRevision;
+    private final Map<UUID, String> groupByEntry = new HashMap<>();
+    private final Map<String, Integer> selectedPerGroup = new HashMap<>();
     private final List<DisplayRow> displayRows = new ArrayList<>();
     // 分页区间随显示行重建，绘制和控件装配共用。
     private List<IntRange> pageRanges = List.of();
@@ -249,39 +261,77 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     // 设置日志数据
     private JournalMirror.Status loadStatus = JournalMirror.Status.IDLE;
 
+    /** 已提交完整历史，包含空表。 */
+    public boolean hasLoadedHistory() {
+        return loadStatus == JournalMirror.Status.READY;
+    }
+
+    /** 在途编辑期间暂停列表行的备注入口。 */
+    public void setNoteEditingAvailable(boolean available) {
+        if (noteEditingAvailable == available) return;
+        noteEditingAvailable = available;
+        controlsDirty = true;
+    }
+
     public void setLoadStatus(JournalMirror.Status status) {
+        if (this.loadStatus == status) return;
         this.loadStatus = status;
+        controlsDirty = true;
     }
 
+    /** 同 UUID 保留行状态，时间或分组键变化时重新分页。 */
     public void setData(List<ExcavationLogEntry> history) {
-        // 日志数据引用
-        this.allEntries.clear();
+        long revision = ++historyRevision;
+        boolean regroup = false;
+        boolean updated = false;
         for (ExcavationLogEntry entry : history) {
-            this.allEntries.add(new LogEntryState(entry));
+            UUID id = entry.entryId();
+            LogEntryState row = entriesById.get(id);
+            if (row == null) {
+                row = new LogEntryState(entry);
+                entriesById.put(id, row);
+                timeOrder.add(row);
+                regroup = true;
+            } else if (row.entry != entry) {
+                boolean moved = ENTRY_TIME_ORDER.compare(row.entry, entry) != 0;
+                if (moved) timeOrder.remove(row);
+                regroup |= moved || !groupKey(row.entry).equals(groupKey(entry));
+                row.update(entry);
+                if (moved) timeOrder.add(row);
+                updated = true;
+            }
+            row.historyRevision = revision;
         }
-        Set<UUID> availableIds = new LinkedHashSet<>();
-        this.allEntries.forEach(state -> availableIds.add(state.entry.entryId()));
-        this.selectedEntryIds.retainAll(availableIds);
-        this.metrics.clear();
-        rebuildDisplayRows();
+        // 镜像已按 UUID 去重。只有旧 UUID 仍在索引时才需要扫描并移除旧行。
+        if (entriesById.size() > history.size()) {
+            var iterator = entriesById.values().iterator();
+            while (iterator.hasNext()) {
+                LogEntryState row = iterator.next();
+                if (row.historyRevision == revision) continue;
+                timeOrder.remove(row);
+                selectedEntryIds.remove(row.entry.entryId());
+                iterator.remove();
+            }
+            regroup = true;
+        }
+        if (regroup || updated) metrics.clear();
+        if (regroup) rebuildDisplayRows();
+        else if (updated) controlsDirty = true;
     }
 
-    // 设置排序方向
-    public void setSortDescending(boolean descending) {
+    /** 同时应用排序方向与分组方式，布局重建只计算一次。 */
+    public void setView(boolean descending, LogGrouper.GroupMode mode) {
+        if (this.sortDescending == descending && this.groupMode == mode) return;
         this.sortDescending = descending;
-        rebuildDisplayRows();
-    }
-
-    // 设置分组方式
-    public void setGroupMode(LogGrouper.GroupMode mode) {
         this.groupMode = mode;
         rebuildDisplayRows();
     }
 
-    // 设置时间分组参考刻（仅玩家切换到日志页时调用一次）
+    // 时间基准只影响时间分组。
     public void setReferenceGameTime(long gameTime) {
-        this.referenceGameTime = gameTime;
-        rebuildDisplayRows();
+        if (referenceGameTime == gameTime) return;
+        referenceGameTime = gameTime;
+        if (groupMode == LogGrouper.GroupMode.TIME && !entriesById.isEmpty()) rebuildDisplayRows();
     }
 
     // 设置选中的日志条目 ID
@@ -299,6 +349,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         this.batchSelectionMode = enabled;
         if (!enabled) {
             this.selectedEntryIds.clear();
+            this.selectedPerGroup.clear();
         }
         this.selectedEntryId = null;
     }
@@ -320,22 +371,23 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         controlsDirty = true;
         this.batchSelectionMode = enabled;
         this.selectedEntryIds.clear();
-        if (enabled && !entryIds.isEmpty()) {
-            Set<UUID> availableIds = new LinkedHashSet<>();
-            this.allEntries.forEach(state -> availableIds.add(state.entry.entryId()));
+        if (enabled) {
             for (UUID entryId : entryIds) {
-                if (availableIds.contains(entryId)) {
-                    this.selectedEntryIds.add(entryId);
-                }
+                if (entriesById.containsKey(entryId)) selectedEntryIds.add(entryId);
             }
         }
-        this.selectedEntryId = null;
+        rebuildGroupSelection();
+        if (enabled) this.selectedEntryId = null;
+    }
+
+    private String groupKey(ExcavationLogEntry entry) {
+        return LogGrouper.groupKey(groupMode, entry, referenceGameTime);
     }
 
     private void rebuildDisplayRows() {
         controlsDirty = true;
-        List<LogEntryState> sortedEntries = new ArrayList<>(allEntries);
-        sortedEntries.sort(sortDescending ? ENTRY_TIME_ORDER.reversed() : ENTRY_TIME_ORDER);
+        var sortedEntries = sortDescending ? timeOrder.descendingSet() : timeOrder;
+        groupByEntry.clear();
 
         LinkedHashMap<String, List<LogEntryState>> groups = new LinkedHashMap<>();
         if (this.groupMode == LogGrouper.GroupMode.TIME) {
@@ -350,7 +402,8 @@ public final class LogPanel implements PagePanel, UiInputContainer {
             groups.put("no", new ArrayList<>());
         }
         for (LogEntryState state : sortedEntries) {
-            String key = LogGrouper.groupKey(groupMode, state.entry, referenceGameTime);
+            String key = groupKey(state.entry);
+            groupByEntry.put(state.entry.entryId(), key);
             groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(state);
         }
 
@@ -368,6 +421,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
 
         this.pageRanges = buildPageRanges();
         this.pagination.pageCount();
+        rebuildGroupSelection();
     }
 
     @Override
@@ -376,7 +430,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         int leftX = this.layout.rightPageX() + 8;
         int listStartY = this.layout.rightPageY() + JournalLayout.LOG_LIST_TOP;
         // 重置按钮悬停缓存（在 renderEntry 中重新填充）
-        if (this.displayRows.isEmpty()) {
+        if (loadStatus != JournalMirror.Status.READY || this.displayRows.isEmpty()) {
             guiGraphics.drawString(font,
                     Component.translatable(switch (loadStatus) {
                         case IDLE, LOADING -> "screen.unsuspiciousblock.archaeology_journal.log_loading";
@@ -421,8 +475,7 @@ public final class LogPanel implements PagePanel, UiInputContainer {
         // 组名文本
         int textX = leftX + 2;
         if (this.batchSelectionMode) {
-            boolean allSelected = header.entries.stream()
-                    .allMatch(state -> this.selectedEntryIds.contains(state.entry.entryId()));
+            boolean allSelected = selectedPerGroup.getOrDefault(header.groupName, 0) == header.entries.size();
             renderCheckbox(guiGraphics, leftX, rowY + 2, allSelected);
             textX += 11;
         }
@@ -439,32 +492,33 @@ public final class LogPanel implements PagePanel, UiInputContainer {
                 this.layout.rightPageRight(), this.layout.rightPageBottom());
     }
 
-    private void toggleGroupSelection(List<LogEntryState> entries) {
-        boolean allSelected = entries.stream()
-                .allMatch(state -> this.selectedEntryIds.contains(state.entry.entryId()));
+    private void toggleGroupSelection(String group, List<LogEntryState> entries) {
+        boolean allSelected = selectedPerGroup.getOrDefault(group, 0) == entries.size();
         for (LogEntryState state : entries) {
-            if (allSelected) {
-                this.selectedEntryIds.remove(state.entry.entryId());
-            } else {
-                this.selectedEntryIds.add(state.entry.entryId());
-            }
+            if (allSelected) selectedEntryIds.remove(state.entry.entryId());
+            else selectedEntryIds.add(state.entry.entryId());
         }
+        if (allSelected) selectedPerGroup.remove(group);
+        else selectedPerGroup.put(group, entries.size());
     }
 
     private void toggleEntrySelection(UUID entryId) {
-        if (!this.selectedEntryIds.add(entryId)) {
-            this.selectedEntryIds.remove(entryId);
+        int change = selectedEntryIds.add(entryId) ? 1 : -1;
+        if (change < 0) selectedEntryIds.remove(entryId);
+        selectedPerGroup.merge(groupByEntry.get(entryId), change, Integer::sum);
+    }
+
+    private void rebuildGroupSelection() {
+        selectedPerGroup.clear();
+        for (UUID id : selectedEntryIds) {
+            selectedPerGroup.merge(groupByEntry.get(id), 1, Integer::sum);
         }
     }
 
     @Nullable
     public ExcavationLogEntry findEntry(UUID entryId) {
-        for (LogEntryState state : this.allEntries) {
-            if (state.entry.entryId().equals(entryId)) {
-                return state.entry;
-            }
-        }
-        return null;
+        LogEntryState state = entriesById.get(entryId);
+        return state == null ? null : state.entry;
     }
 
     @Override
@@ -627,7 +681,8 @@ public final class LogPanel implements PagePanel, UiInputContainer {
     }
 
     private static final class LogEntryState {
-        private final ExcavationLogEntry entry;
+        private ExcavationLogEntry entry;
+        private long historyRevision;
         private int scrollTicks;
         private boolean wasHovered;
         // 逐帧行文案缓存（语言失效点见 syncEntryText）
@@ -639,6 +694,11 @@ public final class LogPanel implements PagePanel, UiInputContainer {
 
         private LogEntryState(ExcavationLogEntry entry) {
             this.entry = entry;
+        }
+
+        private void update(ExcavationLogEntry entry) {
+            this.entry = entry;
+            cachedLanguage = null;
         }
     }
 }

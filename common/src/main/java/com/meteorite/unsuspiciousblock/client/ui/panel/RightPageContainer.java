@@ -10,6 +10,7 @@ import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioRecommendationOverlay;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
+import com.meteorite.unsuspiciousblock.client.ui.support.JournalMirror;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalControls;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
@@ -123,7 +124,7 @@ public final class RightPageContainer implements UiInputContainer {
                         tabLabel("intro"), leaveLog, noAction),
                 page(Tab.ARCHAEOLOGY, () -> archaeology, JournalLayout.GRID_PAGE_INDICATOR_Y, true,
                         tabLabel("archaeology"), leaveLog, noAction),
-                page(Tab.LOG, () -> logMode == LogMode.DETAIL ? logDetailPanel : logPanel,
+                page(Tab.LOG, () -> isShowingLogDetail() ? logDetailPanel : logPanel,
                         JournalLayout.LOG_PAGE_INDICATOR_Y, false, tabLabel("log"),
                         this::captureReferenceGameTime, leaveLog),
                 page(Tab.SCENARIO, () -> scenarioDetailPanel, JournalLayout.SCENARIO_PAGE_INDICATOR_Y, false,
@@ -182,14 +183,15 @@ public final class RightPageContainer implements UiInputContainer {
                          List<DetailOverlayPanel.IntroItem> introItems,
                          int parsedCount, int totalCount) {
         boolean sameTable = Objects.equals(this.currentTableId, tableId);
-        ReadingState previous = captureReadingState();
+        int introPage = detailPanel.getPage();
+        int gridPage = gridPanel.getPage();
 
         Map<String, ScenarioTableSnapshot.Target> targets = new LinkedHashMap<>();
         for (var item : items) {
             targets.put("item#" + item.signature().toStoredKey(), new ScenarioTableSnapshot.Target(item.unlocked(),
                     item.unlocked() ? item.displayName() : Component.empty()));
             for (var path : item.acquisitionPaths()) {
-                if (path.sourceChildTable() != null || path.sourceItemTag() == null) continue;
+                if (path.sourceItemTag() == null) continue;
                 String key = "tag#" + path.sourceItemTag();
                 boolean visible = item.unlocked() || targets.containsKey(key) && targets.get(key).visible();
                 targets.put(key, new ScenarioTableSnapshot.Target(visible,
@@ -203,12 +205,17 @@ public final class RightPageContainer implements UiInputContainer {
         this.gridPanel.setTable(items, childTables, targets);
         this.detailPanel.setData(tableId, parsedCount, totalCount, introItems);
 
-        if (!sameTable) {
+        if (sameTable) {
+            detailPanel.setPage(introPage);
+            gridPanel.setPage(gridPage);
+        } else {
             overlays.close();
             JournalClientConnection.scenario().cancelAssist();
             gridPanel.setActiveTag(null);
             gridPanel.resetPage();
             detailPanel.setPage(0);
+            logPanel.setLoadStatus(JournalMirror.Status.IDLE);
+            logPanel.setData(List.of());
             logPanel.setPage(0);
             logDetailPanel.setPage(0);
             logPanel.setBatchSelectionMode(false);
@@ -218,15 +225,18 @@ public final class RightPageContainer implements UiInputContainer {
         this.currentTableId = tableId;
         this.scenarioPanel.setTable(tableId);
         this.scenarioDetailPanel.setTable(tableId);
-        if (sameTable) restoreReadingState(previous);
         syncPageChrome();
     }
 
-    /** 提交已加载的历史，按 UUID 保持当前详情。 */
-    public void setLogHistory(List<ExcavationLogEntry> history) {
-        this.logPanel.setData(history);
-        restoreLogSelection(this.selectedLogEntryId, isShowingLogDetail());
-        syncPageChrome();
+    /** 历史重取期间保留阅读身份，完整结果到达后按 UUID 恢复详情。 */
+    public void setLogHistory(JournalMirror.Status status, List<ExcavationLogEntry> history) {
+        logPanel.setLoadStatus(status);
+        if (status == JournalMirror.Status.READY) {
+            logPanel.setData(history);
+            restoreLogSelection(selectedLogEntryId, logMode == LogMode.DETAIL);
+        } else {
+            syncPageChrome();
+        }
     }
 
     public void restoreLogSelection(@Nullable UUID entryId, boolean detailMode) {
@@ -264,7 +274,7 @@ public final class RightPageContainer implements UiInputContainer {
         PagePanel panel = activePanel();
         panel.render(guiGraphics, font, pointer);
         // 指示器的可见性与位置由当前页描述决定。
-        if (activePage().alwaysIndicator() || panel.pageCount() > 1) {
+        if (isActivePageReady() && (activePage().alwaysIndicator() || panel.pageCount() > 1)) {
             this.pageIndicator.render(guiGraphics, font);
         }
     }
@@ -282,7 +292,7 @@ public final class RightPageContainer implements UiInputContainer {
     }
 
     public void handleScroll(double scrollY) {
-        if (pageCount() > 1) {
+        if (isActivePageReady() && pageCount() > 1) {
             changePage(scrollY < 0.0 ? 1 : -1);
         }
     }
@@ -314,7 +324,7 @@ public final class RightPageContainer implements UiInputContainer {
      */
     public ReadingState captureReadingState() {
         return new ReadingState(activeTab, new PagePositions(detailPanel.getPage(), gridPanel.getPage(), logPanel.getPage(), logDetailPanel.getPage()),
-                gridPanel.getActiveTag(), isShowingLogDetail(), selectedLogEntryId, logPanel.isBatchSelectionMode(),
+                gridPanel.getActiveTag(), logMode == LogMode.DETAIL, selectedLogEntryId, logPanel.isBatchSelectionMode(),
                 logPanel.getSelectedEntryIds(), scenarioDetailPanel.captureConditionOffsets());
     }
 
@@ -327,7 +337,7 @@ public final class RightPageContainer implements UiInputContainer {
         detailPanel.setPage(state.pages().intro());
         gridPanel.setPage(state.pages().grid());
         logPanel.setPage(state.pages().log());
-        logDetailPanel.setPage(isShowingLogDetail() ? state.pages().logDetail() : 0);
+        logDetailPanel.setPage(logMode == LogMode.DETAIL ? state.pages().logDetail() : 0);
         scenarioDetailPanel.restoreConditionOffsets(state.conditionOffsets());
         setActiveTab(state.tab());
         logPanel.restoreBatchSelection(state.logBatchSelectionMode(), state.selectedLogEntryIds());
@@ -390,7 +400,11 @@ public final class RightPageContainer implements UiInputContainer {
     }
 
     public boolean isShowingLogDetail() {
-        return this.logMode == LogMode.DETAIL;
+        return logMode == LogMode.DETAIL && logPanel.hasLoadedHistory();
+    }
+
+    private boolean isActivePageReady() {
+        return activeTab != Tab.LOG || logPanel.hasLoadedHistory();
     }
 
     public LogPanel getLogPanel() {
@@ -425,7 +439,7 @@ public final class RightPageContainer implements UiInputContainer {
                 JournalLayout.PAGE_BUTTON_WIDTH, JournalLayout.PAGE_BUTTON_HEIGHT);
         pageControls.get(1).setBounds(centerX + JournalLayout.PAGE_BUTTON_CENTER_GAP, buttonY,
                 JournalLayout.PAGE_BUTTON_WIDTH, JournalLayout.PAGE_BUTTON_HEIGHT);
-        boolean hasPages = chromeAvailable && panel.pageCount() > 1;
+        boolean hasPages = chromeAvailable && isActivePageReady() && panel.pageCount() > 1;
         pageControls.get(0).setVisible(hasPages);
         pageControls.get(1).setVisible(hasPages);
         pageControls.get(0).setEnabled(hasPages && panel.getPage() > 0);

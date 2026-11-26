@@ -35,7 +35,6 @@ public final class JournalUiPreferencesStore {
     private static final String CATALOG_SORT = "lastCatalogSortOrder";
     private static final String CATALOG_DESCENDING = "lastCatalogSortDescending";
     private static final String CATALOG_HIDE_LOCKED = "lastCatalogHideLocked";
-    private static final String CATALOG_SEARCH = "lastCatalogSearchText";
     private static final String LOG_SORT = "lastLogSortDescending";
     private static final String LOG_GROUP = "lastLogGroupMode";
     private static JournalReadingState readingState = JournalReadingState.empty();
@@ -46,7 +45,6 @@ public final class JournalUiPreferencesStore {
     private static CatalogSorter.SortOrder lastCatalogSortOrder;
     private static boolean lastCatalogSortDescending;
     private static boolean lastCatalogHideLocked;
-    private static String lastCatalogSearchText = "";
     private static boolean lastDirectoryHome = true;
     @Nullable
     private static ResourceLocation lastDirectoryCategory;
@@ -114,12 +112,6 @@ public final class JournalUiPreferencesStore {
     public static synchronized void setLastCatalogHideLocked(boolean hideLocked) {
         lastCatalogHideLocked = hideLocked;
         if (loadedPath == null) earlyFields.add(CATALOG_HIDE_LOCKED);
-        dirty = true;
-    }
-
-    public static synchronized void setLastCatalogSearchText(@Nullable String text) {
-        lastCatalogSearchText = text == null ? "" : text;
-        if (loadedPath == null) earlyFields.add(CATALOG_SEARCH);
         dirty = true;
     }
 
@@ -303,9 +295,6 @@ public final class JournalUiPreferencesStore {
         if (tag.contains(CATALOG_HIDE_LOCKED, Tag.TAG_BYTE)) {
             lastCatalogHideLocked = tag.getBoolean(CATALOG_HIDE_LOCKED);
         }
-        if (tag.contains(CATALOG_SEARCH, Tag.TAG_STRING)) {
-            lastCatalogSearchText = tag.getString(CATALOG_SEARCH);
-        }
         if (tag.contains(LOG_SORT, Tag.TAG_BYTE)) {
             lastLogSortDescending = tag.getBoolean(LOG_SORT);
         }
@@ -336,7 +325,6 @@ public final class JournalUiPreferencesStore {
         }
         tag.putBoolean(CATALOG_DESCENDING, lastCatalogSortDescending);
         tag.putBoolean(CATALOG_HIDE_LOCKED, lastCatalogHideLocked);
-        tag.putString(CATALOG_SEARCH, lastCatalogSearchText);
         tag.putBoolean(LOG_SORT, lastLogSortDescending);
         if (lastLogGroupMode != null) {
             tag.putString(LOG_GROUP, lastLogGroupMode.name());
@@ -354,7 +342,6 @@ public final class JournalUiPreferencesStore {
         lastCatalogSortOrder = null;
         lastCatalogSortDescending = false;
         lastCatalogHideLocked = false;
-        lastCatalogSearchText = "";
         lastDirectoryHome = true;
         lastDirectoryCategory = null;
         expandedDirectoryTables = Collections.emptySet();

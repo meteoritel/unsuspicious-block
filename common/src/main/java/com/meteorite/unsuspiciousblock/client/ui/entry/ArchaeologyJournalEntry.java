@@ -1,73 +1,9 @@
 package com.meteorite.unsuspiciousblock.client.ui.entry;
 
-import com.meteorite.unsuspiciousblock.client.ui.support.JournalUiPreferencesStore;
-import com.meteorite.unsuspiciousblock.client.ui.support.ArchaeologyJournalClientState;
-import com.meteorite.unsuspiciousblock.client.ui.support.ClientLootTableLanguageStore;
-import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.ItemDefinition;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
-import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.TableDefinition;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.List;
-
-/**
- * 考古笔记左侧条目的完整视图模型。
- * 合并目录定义及玩家进度，作为目录面板与右侧页面的数据源。
- * 设计为不可变快照，在 {@code rebuildViewModels()} 时整体重建。
- */
-public record ArchaeologyJournalEntry(
-        // --- 基础标识 ---
-        ResourceLocation id,
-        Component displayName,
-        // 战利品表声明的 type（如 minecraft:archaeology），用于目录按类型聚类排序
-        String type,
-
-        // --- 考古信息（右侧 Archaeology tab + Intro tab 共用）---
-        List<ArchaeologyEntryItem> items,
-        int simulationCount,
-        int totalCount,
-        int parsedCount,
-        boolean unlocked,
-        // 用户是否收藏该表（客户端偏好）
-        boolean favorite
-) {
-    /**
-     * 从目录定义和玩家进度构建条目视图模型。
-     */
-    public static ArchaeologyJournalEntry of(
-            ResourceLocation tableId,
-            TableDefinition definition,
-            @Nullable ArchaeologyJournalState.TableProgress progress) {
-        progress = ArchaeologyJournalClientState.projectProgress(tableId, progress);
-        List<ArchaeologyEntryItem> items = new ArrayList<>();
-        int parsedCount = 0;
-        for (ItemDefinition itemDefinition : definition.items()) {
-            List<LootAcquisitionPath> directPaths = itemDefinition.acquisitionPaths().stream()
-                    .filter(path -> path.sourceChildTable() == null)
-                    .toList();
-            if (!itemDefinition.acquisitionPaths().isEmpty() && directPaths.isEmpty()) {
-                continue;
-            }
-            ArchaeologyJournalState.ItemProgress itemProgress = progress != null
-                    ? progress.getItemProgress(itemDefinition.signature())
-                    : null;
-            boolean unlocked = itemProgress != null && itemProgress.isUnlocked();
-            int count = progress != null ? progress.getItemCount(itemDefinition.signature()) : 0;
-            if (unlocked) {
-                parsedCount++;
-            }
-            items.add(new ArchaeologyEntryItem(itemDefinition.id(), itemDefinition.displayName(),
-                    itemDefinition.tooltipHint(), itemDefinition.probability(), unlocked, count,
-                    itemDefinition.signature(), directPaths,
-                    itemDefinition.injected(), itemDefinition.uncertaintyLevel(), itemDefinition.observedFunctions()));
-        }
-        boolean tableUnlocked = progress != null && progress.isUnlocked();
-        boolean favorite = JournalUiPreferencesStore.isFavorite(tableId);
-        return new ArchaeologyJournalEntry(tableId, ClientLootTableLanguageStore.displayName(tableId), definition.type(), items,
-                definition.simulationCount(), items.size(), parsedCount, tableUnlocked, favorite);
-    }
+/** 目录行排序与导航需要的表级信息。 */
+public record ArchaeologyJournalEntry(ResourceLocation id, Component displayName, String type,
+                                      int itemCount, boolean unlocked, boolean favorite) {
 }

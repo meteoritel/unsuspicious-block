@@ -25,6 +25,7 @@ import com.meteorite.unsuspiciousblock.client.ui.journal.JournalReadingState;
 import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.CatalogPanel;
 import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.CatalogToolbar;
 import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.JournalViewModel;
+import com.meteorite.unsuspiciousblock.client.ui.journal.catalog.JournalViewModel.RowLocation;
 import com.meteorite.unsuspiciousblock.client.ui.layout.JournalLayout;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.JournalOverlays;
 import com.meteorite.unsuspiciousblock.client.ui.panel.RightPageContainer;
@@ -97,6 +98,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     private JournalBookBackground.BookLayout bookLayout;
     private CatalogPanel catalogPanel;
+    private boolean arrangedCatalogHome;
     private RightPageContainer rightPage;
     /**
      * 模态浮层：打开期间接管全部输入，是本页面唯一的浮层来源。
@@ -123,7 +125,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             new UiNavigationHistory<>(NAVIGATION_HISTORY_CAPACITY);
     private long backRevision;
 
-    private record NavigationKey(@Nullable ResourceLocation table, List<String> conditions, boolean home,
+    private record NavigationKey(@Nullable RowLocation row, List<String> conditions, boolean home,
                                  @Nullable ResourceLocation category, RightPageContainer.Tab tab,
                                  boolean logDetail, @Nullable UUID logEntryId,
                                  @Nullable ResourceLocation activeItemTag) {
@@ -141,7 +143,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     private static NavigationKey navigationKey(UiStateSnapshot state) {
         RightPageContainer.ReadingState reading = state.rightPage();
-        return new NavigationKey(state.table(), state.conditions(), state.home(), state.category(), reading.tab(),
+        return new NavigationKey(state.row(), state.conditions(), state.home(), state.category(), reading.tab(),
                 reading.logDetail(), reading.logEntryId(), reading.activeItemTag());
     }
 
@@ -192,7 +194,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
         }
 
-        this.viewModel.reloadCatalog();
+        this.viewModel.initRevisions();
         this.viewModel.restoreDirectoryState(
                 JournalUiPreferencesStore.isLastDirectoryHome(),
                 JournalUiPreferencesStore.getLastDirectoryCategory(),
@@ -201,8 +203,9 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.restoredCatalogScrollOffset = JournalUiPreferencesStore.getLastDirectoryPage();
         this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
         this.viewModel.rebuildViewModels();
-        this.viewModel.initRevisions();
-        this.rebuildWidgets();
+        positionWidgets(restoredCatalogScrollOffset, true);
+        displayedGrid = null;
+        updateItemGridPanel();
         if (resumeState != null) {
             restoreUiState(resumeState);
             restorePendingReading();
@@ -247,7 +250,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
         JournalUiPreferencesStore.setLastCatalogSortOrder(this.catalogToolbar.currentSortOrder());
         JournalUiPreferencesStore.setLastCatalogSortDescending(this.catalogToolbar.sortDescending());
         JournalUiPreferencesStore.setLastCatalogHideLocked(this.catalogToolbar.hideLocked());
-        JournalUiPreferencesStore.setLastCatalogSearchText("");
         this.catalogToolbar.setCurrentSearch(JournalSearchQuery.EMPTY);
         this.catalogToolbar.setSearchExpanded(false);
         // 持久化日志工具栏状态
@@ -275,9 +277,9 @@ public class ArchaeologyJournalScreen extends UiScreen {
     @Override
     protected void prepareUi() {
         if (rightPage == null) return;
-        refreshAndSync();
         ResourceLocation navigationTarget = rightPage.consumeNavigationTarget();
         if (navigationTarget != null) navigateToChildTable(navigationTarget);
+        refreshAndSync();
         rightPage.prepareUi();
         overlays.prepare(font);
         syncButtonState();
@@ -384,11 +386,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
         rebuildViewModels();
     }
 
-    private void setSelectedTable(ResourceLocation id) {
-        int index = this.viewModel.findNavigationRow(id, null);
-        if (index >= 0) setSelectedIndex(index);
-    }
-
     private boolean moveCatalogSelection(int delta) {
         int currentIndex = this.viewModel.selectedIndex();
         setSelectedIndex(currentIndex < 0 ? 0 : currentIndex + delta);
@@ -419,9 +416,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private void restoreUiState(UiStateSnapshot snapshot) {
         this.logToolbar.setSortDescending(snapshot.logSortDescending());
         this.logToolbar.setGroupMode(snapshot.groupMode());
-        this.rightPage.getLogPanel().setSortDescending(this.logToolbar.sortDescending());
-        this.rightPage.getLogPanel().setGroupMode(this.logToolbar.groupMode());
-
         this.catalogToolbar.setCurrentSortOrder(snapshot.catalogSortOrder());
         this.catalogToolbar.setSortDescending(snapshot.catalogSortDescending());
         this.catalogToolbar.setCurrentSearch(snapshot.catalogSearch());
@@ -429,26 +423,29 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.catalogToolbar.setHideLocked(snapshot.catalogHideLocked());
         this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
         this.viewModel.restoreDirectoryState(snapshot.home(), snapshot.category(), snapshot.expanded());
-        this.rebuildViewModels();
-        if (snapshot.table() != null) {
-            setSelectedTable(snapshot.table());
+        this.viewModel.rebuildViewModels();
+        if (snapshot.row() != null) {
+            int row = viewModel.findRow(snapshot.row());
+            if (row < 0) row = viewModel.findNavigationRow(snapshot.table());
+            if (row >= 0) viewModel.setSelectedIndex(row);
             var choice = JournalClientConnection.scenario().selection(snapshot.table());
             if (choice != null) {
                 JournalClientConnection.scenario().select(snapshot.table(), snapshot.conditions(), choice.params());
             }
         }
 
-        this.rebuildWidgets();
-        JournalMirror mirror = JournalClientConnection.log();
-        if (snapshot.table() != null && snapshot.rightPage().tab() == RightPageContainer.Tab.LOG) {
-            if (mirror.isDisplaying(snapshot.table()) && mirror.status() == JournalMirror.Status.READY) {
-                rightPage.setLogHistory(mirror.history());
-            } else {
-                pendingReading = new JournalReadingState(snapshot.table(), snapshot.rightPage());
-                pendingReadingEpoch = JournalClientConnection.epoch();
-            }
+        positionWidgets(snapshot.catalogScrollOffset(), true);
+        updateItemGridPanel();
+        if (snapshot.table() != null && snapshot.rightPage().tab() == RightPageContainer.Tab.LOG
+                && Objects.equals(snapshot.table(), viewModel.selectedTableId())) {
+            pendingReading = new JournalReadingState(snapshot.table(), snapshot.rightPage());
+            pendingReadingEpoch = JournalClientConnection.epoch();
+            rightPage.setActiveTab(RightPageContainer.Tab.LOG);
+            refreshLogHistory();
+            restorePendingReading();
+        } else {
+            restoreRightPage(snapshot.table(), snapshot.rightPage());
         }
-        restoreRightPage(snapshot.table(), snapshot.rightPage());
         this.categoryFocusIndex = snapshot.categoryFocusIndex();
         if (this.catalogPanel != null) {
             this.catalogPanel.setScrollOffset(snapshot.catalogScrollOffset());
@@ -495,13 +492,16 @@ public class ArchaeologyJournalScreen extends UiScreen {
         if (refresh == JournalViewModel.Refresh.CONTENT) {
             this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
             this.viewModel.rebuildViewModels();
-            syncCatalogProjection();
+            syncCatalogProjection(false);
             this.updateItemGridPanel();
             restorePendingReading();
             this.syncButtonState();
         } else if (refresh == JournalViewModel.Refresh.ORDER) {
             this.viewModel.reorderRows();
-            syncCatalogProjection();
+            syncCatalogProjection(false);
+            updateItemGridPanel();
+        } else if (refresh == JournalViewModel.Refresh.RIGHT_PAGE) {
+            updateItemGridPanel();
         }
         refreshLogHistory();
     }
@@ -515,8 +515,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         if (displayedLogEpoch == epoch && displayedLogRevision == mirror.detailRevision()) return;
         displayedLogEpoch = epoch;
         displayedLogRevision = mirror.detailRevision();
-        rightPage.getLogPanel().setLoadStatus(mirror.status());
-        rightPage.setLogHistory(mirror.status() == JournalMirror.Status.READY ? mirror.history() : List.of());
+        rightPage.setLogHistory(mirror.status(), mirror.history());
         restorePendingReading();
         syncButtonState();
     }
@@ -621,35 +620,30 @@ public class ArchaeologyJournalScreen extends UiScreen {
             return;
         }
         if (!ArchaeologyJournalClientState.isReadingReady()) return;
-        if (target.table() != null && target.rightPage().tab() == RightPageContainer.Tab.LOG
-                && viewModel.isNavigationTargetValid(target.table())
-                && (!Objects.equals(target.table(), viewModel.selectedTableId())
-                        || !JournalClientConnection.log().isDisplaying(target.table()))) {
-            viewModel.prepareNavigationTo(target.table());
-            viewModel.rebuildViewModels();
-            syncCatalogProjection();
-            setSelectedTable(target.table());
-            rightPage.setActiveTab(RightPageContainer.Tab.LOG);
-            return;
-        }
-        if (target.table() != null && target.rightPage().tab() == RightPageContainer.Tab.LOG
-                && JournalClientConnection.log().status() == JournalMirror.Status.LOADING) return;
-        boolean categoryHomeMode = viewModel.isCategoryHomeMode();
-        pendingReading = null;
-        if (target.table() == null) {
+        ResourceLocation table = target.table();
+        if (table == null) {
             viewModel.showCategoryHome();
             rebuildViewModels();
+        } else if (viewModel.isNavigationTargetValid(table)) {
+            if (!table.equals(viewModel.selectedTableId())) {
+                int row = viewModel.findNavigationRow(table);
+                if (row < 0 && catalogToolbar.effectiveSearch().isEmpty() && viewModel.prepareNavigationTo(table)) {
+                    viewModel.rebuildViewModels();
+                    row = viewModel.findNavigationRow(table);
+                }
+                if (row >= 0) viewModel.setSelectedIndex(row);
+                syncCatalogProjection(true);
+                updateItemGridPanel();
+            }
+            if (table.equals(viewModel.selectedTableId()) && target.rightPage().tab() == RightPageContainer.Tab.LOG) {
+                rightPage.setActiveTab(RightPageContainer.Tab.LOG);
+                JournalMirror mirror = JournalClientConnection.log();
+                if (!mirror.isDisplaying(table) || mirror.status() == JournalMirror.Status.LOADING) return;
+            }
         }
-        if (target.table() != null && viewModel.isNavigationTargetValid(target.table())) {
-            if (catalogToolbar.effectiveSearch().isEmpty()) viewModel.prepareNavigationTo(target.table());
-            viewModel.rebuildViewModels();
-            syncCatalogProjection();
-            setSelectedTable(target.table());
-        }
-        updateItemGridPanel();
-        restoreRightPage(target.table(), target.rightPage());
-        if (categoryHomeMode != viewModel.isCategoryHomeMode()) rebuildWidgets();
-        else syncButtonState();
+        pendingReading = null;
+        restoreRightPage(table, target.rightPage());
+        syncButtonState();
     }
 
     private void restoreRightPage(@Nullable ResourceLocation table, RightPageContainer.ReadingState reading) {
@@ -761,6 +755,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
         // 目录工具栏
         boolean categoryHomeMode = this.viewModel.isCategoryHomeMode();
+        this.arrangedCatalogHome = categoryHomeMode;
         boolean showDirectoryBack = !categoryHomeMode;
         int toolbarOffset = categoryHomeMode ? 5 : 18;
         int searchRightEdge = categoryHomeMode
@@ -801,7 +796,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         this.catalogPanel.setNavigation(this::handleCatalogNavigation);
         this.catalogPanel.setOnActivate(this::activateCatalog);
         CatalogPanel.Mode previousMode = catalogPanel.mode();
-        if (updateCatalogProjection) syncCatalogProjection();
+        if (updateCatalogProjection) publishCatalogProjection(true);
         if (isNewCatalogPanel || previousMode != catalogPanel.mode()) {
             catalogPanel.setScrollOffset(previousCatalogScrollOffset);
             catalogPanel.ensureIndexVisible(viewModel.isCategoryHome() ? categoryFocusIndex : viewModel.selectedIndex());
@@ -914,16 +909,26 @@ public class ArchaeologyJournalScreen extends UiScreen {
         // 同步目录工具栏状态到 ViewModel（含防抖窗口内尚未提交的搜索草稿）
         this.viewModel.applyCatalogState(this.catalogToolbar.queryState());
         this.viewModel.rebuildViewModels();
-        if (syncCatalogPanel) syncCatalogProjection();
+        if (syncCatalogPanel) syncCatalogProjection(true);
         updateItemGridPanel();
         syncButtonState();
     }
 
-    private void syncCatalogProjection() {
+    private void syncCatalogProjection(boolean revealSelection) {
         if (catalogPanel == null) return;
+        if (arrangedCatalogHome != viewModel.isCategoryHomeMode()) {
+            positionWidgets(catalogPanel.getScrollOffset(), true);
+        } else {
+            publishCatalogProjection(revealSelection);
+        }
+    }
+
+    private void publishCatalogProjection(boolean revealSelection) {
         if (viewModel.isCategoryHome()) catalogPanel.setCategories(viewModel.categoryViews());
         else catalogPanel.setEntries(viewModel.selectedCategory(), viewModel.buildCatalogEntries());
-        catalogPanel.ensureIndexVisible(viewModel.isCategoryHome() ? categoryFocusIndex : viewModel.selectedIndex());
+        if (revealSelection) {
+            catalogPanel.ensureIndexVisible(viewModel.isCategoryHome() ? categoryFocusIndex : viewModel.selectedIndex());
+        }
     }
 
     private void applySearchFocusRequest() {
@@ -944,8 +949,12 @@ public class ArchaeologyJournalScreen extends UiScreen {
         }
     }
 
+    private @Nullable JournalViewModel.BuildGridResult displayedGrid;
+
     private void updateItemGridPanel() {
         JournalViewModel.BuildGridResult result = this.viewModel.buildGridItems();
+        if (result == displayedGrid) return;
+        displayedGrid = result;
         if (result == null) {
             this.rightPage.setTable(null, List.of(), List.of(), List.of(), 0, 0);
         } else {
@@ -958,15 +967,13 @@ public class ArchaeologyJournalScreen extends UiScreen {
     }
 
     private void navigateToChildTable(ResourceLocation tableId) {
-        ResourceLocation parentTableId = this.viewModel.selectedTableId();
-        if (parentTableId == null || !this.viewModel.prepareNavigationToChild(parentTableId, tableId)) {
-            return;
-        }
+        RowLocation target = viewModel.prepareNavigationToChild(tableId);
+        if (target == null) return;
         this.catalogToolbar.setCurrentSearch(JournalSearchQuery.EMPTY);
         this.catalogToolbar.setHideLocked(false);
         this.catalogToolbar.setSearchExpanded(false);
         this.rebuildWidgets();
-        int targetRow = this.viewModel.findNavigationRow(tableId, parentTableId);
+        int targetRow = this.viewModel.findRow(target);
         if (targetRow >= 0) {
             setSelectedIndex(targetRow);
         }
@@ -999,24 +1006,24 @@ public class ArchaeologyJournalScreen extends UiScreen {
             applyButtonState(button, showExternalLinks, showExternalLinks);
         }
 
-        // 日志工具栏可见性
-        boolean logToolbarVisible = isLogToolbarVisible()
-                && JournalClientConnection.log().status() == JournalMirror.Status.READY;
-        if (!logToolbarVisible && this.rightPage.getLogPanel().isBatchSelectionMode()) {
-            this.rightPage.getLogPanel().setBatchSelectionMode(false);
-        }
-        this.logToolbar.syncVisibility(logToolbarVisible,
-                this.rightPage.getLogPanel().isBatchSelectionMode(),
-                this.rightPage.getLogPanel().getSelectedEntryCount());
+        JournalMirror mirror = JournalClientConnection.log();
+        var logs = rightPage.getLogPanel();
+        boolean logReady = logs.hasLoadedHistory();
+        boolean canEdit = logReady && !JournalClientConnection.isEditPending();
+        logs.setNoteEditingAvailable(canEdit);
+        ResourceLocation table = viewModel.selectedTableId();
+        boolean showRetention = table != null && (mirror.summary(table) != null || viewModel.hasCatalogTable(table));
+        logToolbar.syncVisibility(isLogListMode() && logReady, showRetention, logs.hasVisibleEntries(),
+                mirror.totals().count() > 0, canEdit, logs.isBatchSelectionMode(), logs.getSelectedEntryCount());
 
         // 日志详情页返回/备注按钮可见性
         boolean isLogDetailMode = hasSelectedTable() && this.rightPage.isShowingLogDetail()
                 && this.rightPage.getActiveTab() == RightPageContainer.Tab.LOG;
         applyButtonState(this.rightPage.getLogDetailPanel().getBackButton(), isLogDetailMode, isLogDetailMode);
         applyButtonState(this.rightPage.getLogDetailPanel().getNoteButton(), isLogDetailMode,
-                isLogDetailMode && JournalClientConnection.log().status() == JournalMirror.Status.READY);
+                isLogDetailMode && canEdit);
         applyButtonState(this.rightPage.getLogDetailPanel().getDeleteButton(), isLogDetailMode,
-                isLogDetailMode && JournalClientConnection.log().status() == JournalMirror.Status.READY);
+                isLogDetailMode && canEdit);
         content.syncMembers();
     }
 
@@ -1038,10 +1045,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 && !this.rightPage.isShowingLogDetail();
     }
 
-    private boolean isLogToolbarVisible() {
-        return isLogListMode() && this.rightPage.getLogPanel().hasVisibleEntries();
-    }
-
     // 打开备注编辑子界面：取出当前详情页的 entry + tableId
     private void openNoteEditor() {
         var detail = this.rightPage.getLogDetailPanel();
@@ -1056,6 +1059,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     // 从日志列表页备注图标直接打开编辑界面（不经过详情页）
     private void openNoteEditorForEntry(ExcavationLogEntry entry) {
+        if (JournalClientConnection.isEditPending()) return;
         ResourceLocation tableId = this.viewModel.selectedTableId();
         if (tableId == null) {
             return;
@@ -1097,11 +1101,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 Component.translatable(
                         "screen.unsuspiciousblock.archaeology_journal.log_delete.batch_message",
                         selectedEntryIds.size()),
-                () -> {
-                    if (!JournalClientConnection.delete(DeleteJournalLogPayload.batch(tableId, selectedEntryIds))) return;
-                    this.rightPage.getLogPanel().setBatchSelectionMode(false);
-                    syncButtonState();
-                });
+                () -> JournalClientConnection.delete(DeleteJournalLogPayload.batch(tableId, selectedEntryIds)));
     }
 
     // 二次确认后删除当前表中的单条日志
@@ -1115,10 +1115,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
         openDeleteConfirmation(
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.entry_title"),
                 Component.translatable("screen.unsuspiciousblock.archaeology_journal.log_delete.entry_message"),
-                () -> {
-                    JournalClientConnection.delete(List.of(DeleteJournalLogPayload.entry(tableId, entry.entryId())));
-                    this.rightPage.restoreLogSelection(null, false);
-                });
+                () -> JournalClientConnection.delete(List.of(DeleteJournalLogPayload.entry(tableId, entry.entryId()))));
     }
 
     // 二次确认后清空当前战利品表的全部日志历史
@@ -1173,7 +1170,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 this.catalogToolbar.effectiveSearch(),
                 this.catalogToolbar.searchExpanded(),
                 this.catalogToolbar.hideLocked(),
-                table,
+                viewModel.selectedLocation(),
                 selection == null ? List.of() : List.copyOf(selection.conditions()),
                 this.viewModel.isCategoryHomeMode(),
                 this.viewModel.selectedCategory(),
@@ -1215,13 +1212,16 @@ public class ArchaeologyJournalScreen extends UiScreen {
             JournalSearchQuery catalogSearch,
             boolean catalogSearchExpanded,
             boolean catalogHideLocked,
-            @Nullable ResourceLocation table,
+            @Nullable RowLocation row,
             List<String> conditions,
             boolean home,
             @Nullable ResourceLocation category,
             Set<ResourceLocation> expanded,
             int categoryFocusIndex
     ) {
+        private @Nullable ResourceLocation table() {
+            return row == null ? null : row.table();
+        }
     }
 
 }

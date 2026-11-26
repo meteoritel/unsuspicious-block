@@ -9,7 +9,6 @@ import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalTransferP
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalTransferPayload.Kind;
 import net.minecraft.nbt.CompoundTag;
 import java.io.IOException;
-import com.meteorite.unsuspiciousblock.client.ui.entry.ArchaeologyJournalEntry;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogTableDto;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.CatalogQueryIndex;
@@ -28,6 +27,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -132,6 +132,7 @@ public final class ArchaeologyJournalClientState {
     }
 
     /** 按服务端目录同代的签名候选读取玩家进度。 */
+    @Contract("_, null -> null; _, !null -> !null")
     public static @Nullable TableProgress projectProgress(ResourceLocation tableId, @Nullable TableProgress progress) {
         if (progress == null || connectionState.foldedItems.isEmpty()) return progress;
         var tables = connectionState.serverCatalog;
@@ -363,13 +364,18 @@ public final class ArchaeologyJournalClientState {
             if (progress == null || !progress.isUnlocked()) {
                 continue;
             }
-            ArchaeologyJournalEntry view = ArchaeologyJournalEntry.of(
-                    entry.getKey(), entry.getValue(), progress);
-            if (query.matchesTableByItem(view.id(), view.displayName().getString(), view.type(), view.items())) {
-                return true;
+            for (var item : entry.getValue().items()) {
+                if (CatalogQueryIndex.hasDirectSource(item) && query.matchesItem(item.id(), item.displayName().getString())) {
+                    return true;
+                }
             }
         }
         return false;
+    }
+
+    /** 当前连接已提交的结构与直属候选，不含本地场景测值。 */
+    public static Map<ResourceLocation, TableDefinition> getBaseCatalog() {
+        return connectionState.serverCatalog;
     }
 
     public static CatalogStructure getCatalogStructure() {
