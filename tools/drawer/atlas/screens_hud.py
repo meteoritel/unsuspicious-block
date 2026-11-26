@@ -8,7 +8,7 @@ if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from atlas.catalog import CLOSE_GLYPH
-from atlas.palette import CAT_FAVOR_PALETTE, UI_PALETTE, IconSpec, place_zone1_icons, run_source_preview
+from atlas.palette import CAT_FAVOR_PALETTE, UI_PALETTE, IconSpec, LayeredIcon, place_zone1_icons, run_source_preview
 from atlas.scenario import MINUS_GLYPH, PLUS_GLYPH, RESET_GLYPH
 from drawlib import AtlasBuilder
 
@@ -87,17 +87,30 @@ ICONS: dict[tuple[int, int, str], IconSpec] = {
         '.rrrrrrrr.',
         '..........',
     ),
-    (4, 4, 'POTTERY_REDSTONE'): (
-        '..........',
-        '....ZZ....',
-        '...ZuuZ...',
-        '..ZuuZZZ..',
-        '.ZZZZZZZZ.',
-        '.ZZZZZZZZ.',
-        '..rrrrrr..',
-        '..........',
-        '..........',
-        '..........',
+    (4, 4, 'POTTERY_REDSTONE'): LayeredIcon(
+        layers=((
+            '..........',
+            '....RR....',
+            '...RyoR...',
+            '...RcWR...',
+            '....rr....',
+            '....lw....',
+            '....lm....',
+            '....mw....',
+            '....lw....',
+            '..........',
+        ),),
+        palette=UI_PALETTE.extend({
+            'r': '#B81814',
+            'R': '#EC2018',
+            'y': '#FFE000',
+            'o': '#FF9400',
+            'c': '#FFF894',
+            'W': '#FFFFFF',
+            'w': '#483218',
+            'm': '#6C4C26',
+            'l': '#946C38',
+        }),
     ),
 }
 

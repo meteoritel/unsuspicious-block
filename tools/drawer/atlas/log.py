@@ -116,7 +116,7 @@ _CHECKBOX_TICK_OVERLAY = (
 )
 
 ICONS: dict[tuple[int, int, str], IconSpec] = {
-    # —— 日志工具栏、导航与通用状态 (Row 1, cols 0..4 & 6..11) ——
+    # —— 日志工具栏、导航与通用状态 (Row 1, cols 0..2 & 4 & 6..11) ——
     (0, 1, 'BACK'): (
         '..........',
         '...I......',
@@ -151,18 +151,6 @@ ICONS: dict[tuple[int, int, str], IconSpec] = {
         '.IILTTLII.',
         '.IILLLLII.',
         '.IIIIIIII.',
-        '..........',
-    ),
-    (3, 1, 'REDSTONE'): (
-        '..........',
-        '....rr....',
-        '...rzzr...',
-        '..rzRzzr..',
-        '.rRRRRRRr.',
-        '.rRRRRRRr.',
-        '..rrrrrr..',
-        '..........',
-        '..........',
         '..........',
     ),
     (4, 1, 'GEAR'): (

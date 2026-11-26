@@ -59,7 +59,6 @@ public final class UiAtlas {
         ENABLED(1, 1),
         CHECK(1, 1),
         DISABLED(2, 1),
-        REDSTONE(3, 1),
         GEAR(4, 1),
         HELP(5, 1),
         PENCIL(6, 1),
