@@ -13,9 +13,15 @@
 
 ![用沙子和考古铲制作不可疑沙子](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-recipe-unsuspicious-sand.png)
 
+![用沙砾和考古铲制作不可疑沙砾](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-recipe-unsuspicious-gravel.png)
+
 ## 封存物品
 
 将 **1 个空的不可疑方块**和 **1 个想要藏起来的物品**放入工作台或背包合成格（无序），即可封存成带物品的不可疑方块。每个方块最多封存 1 件物品（不能把不可疑方块相互嵌套封存）。
+
+![在不可疑的沙子中封存一颗钻石](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-recipe-unsuspicious-sand-sealing.png)
+
+![在不可疑的沙砾中封存一颗钻石](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-recipe-unsuspicious-gravel-sealing.png)
 
 - 封存后的方块会记录制作者的玩家信息。
 - 使用[可疑解析仪](zh-Reader-and-Shovel)扫描或安装 **Jade** 观察时，会显示里面封存的物品与封存玩家。

@@ -16,6 +16,8 @@
 
 ![三株瓶子草合成三张基页](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-recipe-base-page.png)
 
+![一张基页合成一张纸](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-recipe-base-page-to-paper.png)
+
 ## 锻造随机附魔书
 
 在**锻造台**中从左到右依次放入：

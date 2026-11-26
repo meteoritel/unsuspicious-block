@@ -16,6 +16,8 @@ Place **3 Pitcher Plants** in a horizontal row on a crafting table to craft **3 
 
 ![Three pitcher plants craft into three Base Pages](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-base-page.png)
 
+![One Base Page crafts into one piece of paper](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-base-page-to-paper.png)
+
 ## Forging a Random Enchanted Book
 
 Place the following items into a **Smithing Table** from left to right:

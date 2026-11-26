@@ -8,11 +8,15 @@ Torchflowers can be processed into flammable **Spark Dust** for fuel and torches
 
 Combine **2 Torchflowers** anywhere in a crafting grid to get **4 Spark Dust**.
 
+![Two torchflowers craft into four Spark Dust](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-spark-dust.png)
+
 ### Uses
 
 - **Furnace Fuel**: Each Spark Dust burns for **800 ticks** (40 seconds, enough to smelt 4 items).
 - **Crafting Torches**: Place **1 Spark Dust** directly above **1 Stick** in a crafting grid to make **2 Torches**.
 - **Crafting Rewind Dust**: Used as the center catalyst in Rewind Dust.
+
+![Spark Dust and a stick craft into two torches](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-spark-dust-torch.png)
 
 ## Rewind Dust
 
@@ -23,6 +27,8 @@ Arrange the following ingredients in a `3×3` crafting table to craft **1 Rewind
 - **7 Echo Shards** (top-left, top-right, middle-left, middle-right, and all 3 bottom slots)
 - **1 Dragon's Breath** (top-center)
 - **1 Spark Dust** (center)
+
+![Crafting Rewind Dust with Echo Shards, Dragon's Breath, and Spark Dust](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-rewind-dust.png)
 
 ### How to Use
 

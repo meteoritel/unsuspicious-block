@@ -8,11 +8,15 @@
 
 在工作台或背包合成格中将 **2 朵火把花** 无序合成为 **4 份花火粉**。
 
+![两朵火把花合成四份花火粉](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-recipe-spark-dust.png)
+
 ### 用途
 
 - **熔炉燃料**：每份花火粉可燃烧 **800 游戏刻**（40 秒，可烧炼 4 个物品）。
 - **合成火把**：在工作台中将 **1 份花火粉**放在 **1 根木棍**上方，可合成 **2 支火把**。
 - **制作回溯粉**：回溯粉的核心合成材料之一。
+
+![用花火粉和木棍合成两支火把](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-recipe-spark-dust-torch.png)
 
 ## 回溯粉
 
@@ -23,6 +27,8 @@
 - **7 个回响碎片**（第一行左右两侧、第二行左右两侧、第三行全部三个槽位）
 - **1 瓶龙息**（第一行正中）
 - **1 份花火粉**（中心槽位）
+
+![用回响碎片、龙息和花火粉合成回溯粉](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-recipe-rewind-dust.png)
 
 ### 使用方法
 

@@ -43,6 +43,8 @@ While holding the Reader, press `V` (rebindable in Key Binds) to cycle scan leve
 - **Toggle HUD**: Press `H` to toggle the Reader HUD panels (without hiding Jade or basic world outlines). Panels also hide automatically when another GUI is open or `F1` is pressed.
 - **Outline Colors & Duration**: Suspicious blocks with loot glow cyan, empty blocks glow gray, and unopened containers glow purple, with a brighter outline on your focused target. Outlines remain visible for 10 seconds, extending up to 30 seconds while you keep looking at a target.
 
+![The Suspicious Reader outlines nine buried blocks and shows Ancient Coin details beside the crosshair](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-suspicious-reader-scan.png)
+
 ### Energy and Recharging
 
 - **Max Energy**: 512 (shown by a green/yellow/red bar on the item).

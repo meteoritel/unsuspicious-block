@@ -20,6 +20,8 @@
 
 在附魔台中放入物品后，悬停三个附魔槽位时，不再只显示原版提示的一条附魔，而是展示该选项可能出现的所有候选附魔及其等级。
 
+![猫之瞳揭示钓鱼竿的附魔候选与等级](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-eye-of-cat-enchanting.png)
+
 ### 2. 铁砧成本分解
 
 在铁砧中合成或修复物品时，将鼠标悬停在结果槽或相关物品提示上，可查看详细的等级消耗分解：
@@ -28,6 +30,8 @@
 - 基础惩罚、附魔费用、修复费用、重命名费用与不兼容惩罚
 - 附魔变动详情（并标注互斥或不适用项）与是否触发「过于昂贵」
 
+![猫之瞳显示合并两把弓的等级成本、附魔升级和互斥项](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-eye-of-cat-anvil.png)
+
 ### 3. 砂轮操作预览
 
 在砂轮中放入物品时，悬停预览可查看：
@@ -35,3 +39,5 @@
 - 操作类型（去魔或合并修复）
 - 将被移除的附魔与将保留的诅咒
 - 返还的经验值区间、耐久变化以及惩罚值变化
+
+![猫之瞳预览砂轮合并钻石镐时的附魔移除、诅咒保留和经验返还](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/zh-eye-of-cat-grindstone.png)

@@ -13,9 +13,15 @@ This produces 1 **Unsuspicious Sand** or **Unsuspicious Gravel**. Each craft cos
 
 ![Making Unsuspicious Sand with sand and an Archaeological Shovel](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-unsuspicious-sand.png)
 
+![Making Unsuspicious Gravel with gravel and an Archaeological Shovel](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-unsuspicious-gravel.png)
+
 ## Sealing Items
 
 Combine **1 empty Unsuspicious Block** and **1 item to hide** in any crafting grid to seal that item inside (one item per block; Unsuspicious Blocks cannot be sealed inside each other).
+
+![Sealing a diamond inside Unsuspicious Sand](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-unsuspicious-sand-sealing.png)
+
+![Sealing a diamond inside Unsuspicious Gravel](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-unsuspicious-gravel-sealing.png)
 
 - The block remembers which player sealed it.
 - Scanning it with the [Suspicious Reader](en-Reader-and-Shovel) or viewing it with **Jade** reveals both the sealed item and the player who sealed it.

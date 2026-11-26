@@ -31,15 +31,17 @@ All three pans can be repaired on an anvil with their base material and accept D
 
 | Pan | Crafting Recipe | Durability | Anvil Repair | Targets & Traits |
 |---|---|---:|---|---|
-| **Copper Pan** | 4 copper ingots + 1 iron nugget | 32 | Copper Ingot | River **Shimmers** only; baseline luck for steady panning. |
-| **Gold Pan** | 4 gold ingots + 1 gold nugget | 24 | Gold Ingot | River **Shimmers** only; grants **`+1.0` luck bonus** by default and a **10%** chance by default to create a nearby special spot on each successful harvest of a natural spot. |
-| **Obsidian Pan** | 4 obsidian + 1 crying obsidian | 64 | Obsidian | **The only pan usable on Nether Glimmers**; can pan water as well, but applies a **`-1.0` luck penalty** in rivers, lowering mineral silt and preventing gold nuggets, riverbed minerals, and Lost Pages. |
+| **Copper Pan** | 3 copper ingots + 2 iron nuggets | 32 | Copper Ingot | River **Shimmers** only; baseline luck for steady panning. |
+| **Gold Pan** | 3 gold ingots + 2 gold nuggets | 24 | Gold Ingot | River **Shimmers** only; grants **`+1.0` luck bonus** by default and a **10%** chance by default to create a nearby special spot on each successful harvest of a natural spot. |
+| **Obsidian Pan** | 3 obsidian + 2 crying obsidian | 64 | Obsidian | **The only pan usable on Nether Glimmers**; can pan water as well, but applies a **`-1.0` luck penalty** in rivers, lowering mineral silt and preventing gold nuggets, riverbed minerals, and Lost Pages. |
 
-Arrange ingredients in a U-shape in a crafting table (top-left/top-right main material, bottom-left/bottom-right main material + bottom-center core):
+Use two adjacent rows in a crafting table. Place the main material at both ends of the upper row and in the center of the lower row. Place the second material at both ends of the lower row.
 
-- Copper Pan: `Copper _ Copper` / `Copper Iron_Nugget Copper`
-- Gold Pan: `Gold _ Gold` / `Gold Gold_Nugget Gold`
-- Obsidian Pan: `Obsidian _ Obsidian` / `Obsidian Crying_Obsidian Obsidian`
+![Crafting table recipe for the Copper Pan](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-copper-pan.png)
+
+![Crafting table recipe for the Gold Pan](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-gold-pan.png)
+
+![Crafting table recipe for the Obsidian Pan](https://raw.githubusercontent.com/meteoritel/unsuspicious-block/1.21.1/docs/image/wiki/en-recipe-obsidian-pan.png)
 
 ### How Panning Works & Spot Types
 
