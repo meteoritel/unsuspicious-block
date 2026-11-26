@@ -4,9 +4,9 @@ import com.meteorite.meteosuikit.api.control.UiControl;
 import com.meteorite.meteosuikit.api.control.UiListView;
 import com.meteorite.meteosuikit.api.control.UiOverlay;
 import com.meteorite.meteosuikit.api.control.UiWidgetRow;
-import com.meteorite.meteosuikit.api.layout.UiLinearLayout;
 import com.meteorite.meteosuikit.api.geometry.UiRect;
 import com.meteorite.meteosuikit.api.input.*;
+import com.meteorite.meteosuikit.api.layout.UiLinearLayout;
 import com.meteorite.meteosuikit.api.render.UiLayer;
 import com.meteorite.meteosuikit.api.render.UiTooltipPresenter;
 import com.meteorite.meteosuikit.api.style.UiControlRole;
@@ -24,7 +24,6 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
-import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.SimulationOptions;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ConditionOption;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ScenarioParams;
@@ -128,8 +127,8 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         UiControl button = new UiControl();
         button.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.SECONDARY);
         button.setFocusable(true);
-        button.configure(font, label, icon == null ? null : UiAtlas.icon(icon),
-                List.of(label.copy().withStyle(TooltipBuilder.BODY)), action);
+        button.configure(font, label, icon == null ? null : UiAtlas.icon(icon), List.of(), action);
+        button.setAccessibleName(label);
         actions.add(button);
         return button;
     }
@@ -176,7 +175,7 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         for (UiControl action : actions) action.render(graphics, font, pointer);
         confirmationRow.render(graphics, font, pointer);
         if (pointer.allowsTooltip() && pointer.hit() != null) {
-            UiTooltipPresenter.render(graphics, font, pointer.hit(), UnsuspiciousUiTheme.PARCHMENT.surfaces(),
+            UiTooltipPresenter.render(graphics, font, pointer.hit(), UnsuspiciousUiTheme.PARCHMENT.tooltipSkin(),
                     (int) pointer.x(), (int) pointer.y());
         }
     }
@@ -190,43 +189,29 @@ final class ScenarioConditionOverlay implements JournalOverlays.Surface, UiInput
         int index = hit.rowIndex(list);
         if (index >= 0 && index < options.conditions().size()) {
             ConditionOption option = options.conditions().get(index);
-            JournalTooltipSpec spec = ScenarioLabel.conditionTooltipRich(
+            List<Component> lines = ScenarioLabel.conditionTooltipLines(
                     option.condition(), draftConditions.contains(option.id()));
-            hit = JournalRichTooltip.attach(hit.withTextTooltip(spec.plainLines(), list.bounds()), spec);
+            hit = hit.withTextTooltip(lines, list.bounds());
         } else if (hit.owns(probe)) {
-            hit = JournalRichTooltip.attach(hit, JournalTooltipSpec.builder()
-                    .header(UiAtlas.SYNC_PLAYER, ScenarioSession.text("probe.button"), TooltipBuilder.TITLE, null)
-                    .line(ScenarioSession.text("probe.hint").copy().withStyle(TooltipBuilder.LABEL))
-                    .build());
+            hit = hit.withTextTooltip(List.of(
+                    ScenarioSession.text("probe.button").copy().withStyle(TooltipBuilder.TITLE),
+                    ScenarioSession.text("probe.hint").copy().withStyle(TooltipBuilder.LABEL)
+            ), probe.bounds());
         } else if (hit.owns(paramsButton)) {
-            hit = JournalRichTooltip.attach(hit, JournalTooltipSpec.builder()
-                    .header(UiAtlas.icon(UiAtlas.Icon.PARAMS), ScenarioSession.text("params.title"),
-                            TooltipBuilder.TITLE, null)
-                    .line(ScenarioSession.text("params.tooltip_open").copy().withStyle(TooltipBuilder.LABEL))
-                    .build());
+            hit = hit.withTextTooltip(List.of(
+                    ScenarioSession.text("params.title").copy().withStyle(TooltipBuilder.TITLE),
+                    ScenarioSession.text("params.tooltip_open").copy().withStyle(TooltipBuilder.LABEL)
+            ), paramsButton.bounds());
         } else if (hit.owns(clear)) {
-            hit = JournalRichTooltip.attach(hit, JournalTooltipSpec.builder()
-                    .header(UiAtlas.icon(UiAtlas.Icon.CLOSE), ScenarioSession.text("conditions.clear"),
-                            TooltipBuilder.BODY, null)
-                    .line(ScenarioSession.text("conditions.clear_hint").copy().withStyle(TooltipBuilder.LABEL))
-                    .build());
-        } else if (hit.owns(calculateButton)) {
-            hit = JournalRichTooltip.attach(hit, JournalTooltipSpec.builder()
-                    .header(UiAtlas.icon(UiAtlas.Icon.CALCULATE), ScenarioSession.text("params.apply_calculate"),
-                            TooltipBuilder.TITLE, null)
-                    .line(ScenarioSession.text("params.apply_calculate_hint").copy().withStyle(TooltipBuilder.LABEL))
-                    .build());
+            hit = hit.withTextTooltip(List.of(
+                    ScenarioSession.text("conditions.clear_hint").copy().withStyle(TooltipBuilder.LABEL)
+            ), clear.bounds());
         } else if (hit.owns(applyOnlyButton)) {
-            hit = JournalRichTooltip.attach(hit, JournalTooltipSpec.builder()
-                    .header(ScenarioSession.text("params.apply_only"), TooltipBuilder.BODY)
-                    .line(ScenarioSession.text("params.confirm_help").copy().withStyle(TooltipBuilder.LABEL))
-                    .build());
-        } else if (hit.owns(cancelButton)) {
-            hit = JournalRichTooltip.attach(hit, JournalTooltipSpec.builder()
-                    .header(Component.translatable("gui.cancel"), TooltipBuilder.LABEL)
-                    .build());
+            hit = hit.withTextTooltip(List.of(
+                    ScenarioSession.text("params.confirm_help").copy().withStyle(TooltipBuilder.LABEL)
+            ), applyOnlyButton.bounds());
         }
-        return hit.within(this);
+        return JournalRichTooltip.attachText(hit).within(this);
     }
 
     @Override

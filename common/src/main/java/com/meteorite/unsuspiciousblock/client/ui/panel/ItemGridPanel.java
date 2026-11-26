@@ -794,24 +794,22 @@ public final class ItemGridPanel implements PagePanel, UiInputContainer {
     private static JournalTooltipSpec tagTooltipSpec(TagGroup group) {
         if (!group.unlocked()) {
             return JournalTooltipSpec.builder()
-                    .header(UiAtlas.UNKNOWN_ITEM,
-                            Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"),
-                            TooltipBuilder.LABEL, null)
-                    .line(Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.undiscovered_hint")
-                            .withStyle(TooltipBuilder.HINT))
+                    .line(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"),
+                            TooltipBuilder.LABEL)
+                    .line(Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.undiscovered_hint"),
+                            TooltipBuilder.HINT)
                     .build();
         }
-        return JournalTooltipBuilder.buildTagRich(group.id(), group.discoveredCount(), group.members().size());
+        return JournalTooltipBuilder.buildTagRich(group.id());
     }
 
     private static JournalTooltipSpec childTableTooltipSpec(ChildTableEntry child, boolean recommendationHovered) {
         if (!child.unlocked()) {
             return JournalTooltipSpec.builder()
-                    .header(UiAtlas.UNKNOWN_ITEM,
-                            Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"),
-                            TooltipBuilder.LABEL, null)
-                    .line(Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.undiscovered_hint")
-                            .withStyle(TooltipBuilder.HINT))
+                    .line(Component.translatable("screen.unsuspiciousblock.archaeology_journal.collection_locked"),
+                            TooltipBuilder.LABEL)
+                    .line(Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.undiscovered_hint"),
+                            TooltipBuilder.HINT)
                     .build();
         }
         if (recommendationHovered) {

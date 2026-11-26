@@ -27,7 +27,6 @@ import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.JournalTextColors;
-import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
 import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
@@ -48,6 +47,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -157,7 +157,8 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         UiControl button = new UiControl();
         button.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.SECONDARY);
         button.setFocusable(true);
-        button.configure(font, label, null, List.of(label), action);
+        button.configure(font, label, null, List.of(), action);
+        button.setAccessibleName(label);
         return button;
     }
 
@@ -284,7 +285,7 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         if (error != null)
             graphics.drawString(font, error, bounds.x() + 8, bounds.bottom() - 45, UiTextScheme.PARCHMENT.negative(), false);
         if (pointer.allowsTooltip() && pointer.hit() != null)
-            UiTooltipPresenter.render(graphics, font, pointer.hit(), UnsuspiciousUiTheme.PARCHMENT.surfaces(), (int) pointer.x(), (int) pointer.y());
+            UiTooltipPresenter.render(graphics, font, pointer.hit(), UnsuspiciousUiTheme.PARCHMENT.tooltipSkin(), (int) pointer.x(), (int) pointer.y());
     }
 
     @Override
@@ -294,44 +295,39 @@ public final class ScenarioParamsOverlay implements JournalOverlays.Surface, UiI
         int toolIndex = hit.rowIndex(tools);
         if (toolIndex >= 0) {
             ToolOption tool = tools.items().get(toolIndex);
-            ItemStack toolStack = new ItemStack(BuiltInRegistries.ITEM.get(tool.id()));
-            boolean selected = toolIndex == tools.selectedIndex();
-            JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder()
-                    .itemHeader(toolStack, tool.displayName(), TooltipBuilder.BODY,
-                            selected ? new JournalTooltipSpec.Pill(text("params.selected"), TooltipBuilder.POSITIVE) : null);
+            List<Component> lines = new ArrayList<>();
             if (tool.predicateText() != null) {
-                spec.line(tool.predicateText().copy().withStyle(TooltipBuilder.LABEL));
+                lines.add(tool.predicateText().copy().withStyle(TooltipBuilder.LABEL));
             }
             if (JournalTooltipSpec.showAdvancedIds()) {
-                spec.line(Component.literal(tool.id().toString()).withStyle(TooltipBuilder.HINT));
+                lines.add(Component.literal(tool.id().toString()).withStyle(TooltipBuilder.HINT));
             }
-            JournalTooltipSpec built = spec.build();
-            return JournalRichTooltip.attach(hit.withTextTooltip(built.plainLines(), tools.bounds()), built).within(this);
+            if (!lines.isEmpty()) {
+                hit = hit.withTextTooltip(List.copyOf(lines), tools.bounds());
+            }
+            return JournalRichTooltip.attachText(hit).within(this);
         }
         int enchantmentIndex = hit.rowIndex(enchantments);
         if (enchantmentIndex >= 0) {
             ResourceLocation enchId = enchantments.items().get(enchantmentIndex);
             int level = levels.getOrDefault(enchId, 0);
             int maxLevel = options.enchantments().getOrDefault(enchId, 0);
-            JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder()
-                    .header(Component.literal(enchantmentName(enchId)), TooltipBuilder.ACCENT,
-                            new JournalTooltipSpec.Pill(Component.literal(level + "/" + maxLevel),
-                                    level > 0 ? TooltipBuilder.POSITIVE : TooltipBuilder.LABEL));
+            List<Component> lines = new ArrayList<>();
+            lines.add(Component.literal(enchantmentName(enchId) + " " + level + "/" + maxLevel)
+                    .withStyle(level > 0 ? TooltipBuilder.ACCENT : TooltipBuilder.BODY));
             if (JournalTooltipSpec.showAdvancedIds()) {
-                spec.line(Component.literal(enchId.toString()).withStyle(TooltipBuilder.HINT));
+                lines.add(Component.literal(enchId.toString()).withStyle(TooltipBuilder.HINT));
             }
-            JournalTooltipSpec built = spec.build();
-            return JournalRichTooltip.attach(hit.withTextTooltip(built.plainLines(), enchantments.bounds()), built).within(this);
+            return JournalRichTooltip.attachText(hit.withTextTooltip(List.copyOf(lines), enchantments.bounds())).within(this);
         }
         if (hit.owns(luck)) {
-            JournalTooltipSpec built = JournalTooltipSpec.builder()
-                    .header(UiAtlas.LUCK_ICON, text("params.luck"), TooltipBuilder.TITLE, null)
-                    .line(text("params.luck_description").copy().withStyle(TooltipBuilder.LABEL))
-                    .line(text("params.luck_slider").copy().withStyle(TooltipBuilder.HINT))
-                    .build();
-            return JournalRichTooltip.attach(hit.withTextTooltip(built.plainLines(), luck.bounds()), built).within(this);
+            List<Component> lines = List.of(
+                    text("params.luck_description").copy().withStyle(TooltipBuilder.LABEL),
+                    text("params.luck_slider").copy().withStyle(TooltipBuilder.HINT)
+            );
+            return JournalRichTooltip.attachText(hit.withTextTooltip(lines, luck.bounds())).within(this);
         }
-        return hit.within(this);
+        return JournalRichTooltip.attachText(hit).within(this);
     }
 
     public static String enchantmentName(ResourceLocation id) {

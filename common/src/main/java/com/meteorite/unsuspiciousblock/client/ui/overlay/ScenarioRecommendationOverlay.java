@@ -10,6 +10,7 @@ import com.meteorite.meteosuikit.api.input.UiChildren;
 import com.meteorite.meteosuikit.api.input.UiInputContainer;
 import com.meteorite.meteosuikit.api.input.UiInputTarget;
 import com.meteorite.meteosuikit.api.input.UiPointer;
+import com.meteorite.meteosuikit.api.input.UiPointerHit;
 import com.meteorite.meteosuikit.api.layout.UiNode;
 import com.meteorite.meteosuikit.api.render.UiLayer;
 import com.meteorite.meteosuikit.api.render.UiTooltipPresenter;
@@ -22,9 +23,11 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioUi;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
+import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.ConditionOption;
 import com.meteorite.unsuspiciousblock.core.loottable.simulation.SimulationAssistTarget;
 import com.meteorite.unsuspiciousblock.core.network.payload.ScenarioSelection;
+import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -177,7 +180,7 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
         controls.beginUpdate();
         UiControl close = controls.obtain("close");
         close.setBounds(bounds.right() - 22, bounds.y() + 4, 18, 16);
-        Component closeLabel = text("params.cancel");
+        Component closeLabel = text("params.cancel").copy().withStyle(TooltipBuilder.BODY);
         close.configure(font, Component.empty(), UiAtlas.icon(UiAtlas.Icon.CLOSE),
                 List.of(closeLabel), owner::close);
         close.setAccessibleName(closeLabel);
@@ -210,7 +213,8 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
     private UiControl button(Font font, String key, Component label, int x, int y, int width, UiAction action) {
         UiControl control = controls.obtain(key);
         control.setBounds(x, y, width, 16);
-        control.configure(font, label, null, List.of(label), action);
+        control.configure(font, label, null, List.of(), action);
+        control.setAccessibleName(label);
         return control;
     }
 
@@ -264,7 +268,12 @@ public final class ScenarioRecommendationOverlay implements JournalOverlays.Surf
         document.render(graphics, font, pointer);
         controls.render(graphics, font, pointer);
         if (pointer.allowsTooltip() && pointer.hit() != null) UiTooltipPresenter.render(graphics, font, pointer.hit(),
-                UnsuspiciousUiTheme.PARCHMENT.surfaces(), (int) pointer.x(), (int) pointer.y());
+                UnsuspiciousUiTheme.PARCHMENT.tooltipSkin(), (int) pointer.x(), (int) pointer.y());
+    }
+
+    @Override
+    public @Nullable UiPointerHit hitTest(double x, double y) {
+        return JournalRichTooltip.attachText(UiInputContainer.super.hitTest(x, y));
     }
 
     @Override

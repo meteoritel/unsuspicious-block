@@ -15,10 +15,7 @@ import com.meteorite.unsuspiciousblock.client.ui.support.ScenarioLabel;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioTableSnapshot;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
-import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
-import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -26,6 +23,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 import static com.meteorite.unsuspiciousblock.client.state.ScenarioSession.text;
@@ -44,10 +43,6 @@ public final class ScenarioPanel implements UiInputContainer {
     @Nullable
     private Font measuredFont;
     private String headerKey = "";
-    @Nullable
-    private JournalTooltipSpec sceneTooltip;
-    @Nullable
-    private JournalTooltipSpec calculateTooltip;
 
     public ScenarioPanel(JournalBookBackground.BookLayout layout) {
         this.layout = layout;
@@ -105,10 +100,9 @@ public final class ScenarioPanel implements UiInputContainer {
         UiControl scene = place("scene", x, y + 6, width - 60);
         scene.setSkin(UiAtlas.QUIET_BUTTON_SKIN);
         Component summary = ScenarioLabel.selectionSummary(structure.options(), choice.conditions());
-        sceneTooltip = ScenarioLabel.selectionTooltipRich(structure.options(), choice.conditions(), choice.params());
         scene.configure(font, summary, UiTextScheme.PARCHMENT.title(),
                 UiAtlas.icon(UiAtlas.Icon.CHEVRON_DOWN),
-                sceneTooltip.plainLines(),
+                ScenarioLabel.selectionTooltipLines(structure.options(), choice.conditions(), choice.params()),
                 () -> {
                     if (openConditions != null) {
                         openConditions.run();
@@ -120,7 +114,6 @@ public final class ScenarioPanel implements UiInputContainer {
             case "uncomputed", "failed", "query_failed", "available" -> true;
             default -> false;
         };
-        calculateTooltip = buildCalculateTooltip(status, presentation.failure(), canCalculate);
         UiControl calculate = place("calculate", x + width - 58, y + 6, 58);
         calculate.setTheme(() -> UnsuspiciousUiTheme.PARCHMENT, UiControlRole.PRIMARY);
         String labelKey = switch (status) {
@@ -128,49 +121,25 @@ public final class ScenarioPanel implements UiInputContainer {
             default -> "results.status." + status;
         };
         calculate.configure(font, text(labelKey),
-                null, calculateTooltip.plainLines(),
+                null, buildCalculateTooltipLines(status, presentation.failure(), canCalculate),
                 () -> JournalClientConnection.scenario().request(table, true));
         calculate.setEnabled(canCalculate);
 
         controls.endUpdate();
     }
 
-    private static JournalTooltipSpec buildCalculateTooltip(String status, @Nullable String failure,
+    private static List<Component> buildCalculateTooltipLines(String status, @Nullable String failure,
                                                             boolean canCalculate) {
-        JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder();
-        ChatFormatting pillColor = switch (status) {
-            case "cached", "available" -> TooltipBuilder.POSITIVE;
-            case "failed", "query_failed" -> TooltipBuilder.NEGATIVE;
-            case "pending", "querying", "retrieving" -> TooltipBuilder.ACCENT;
-            default -> TooltipBuilder.LABEL;
-        };
-        spec.header(UiAtlas.statusBadge(status), text("calculate"), TooltipBuilder.TITLE,
-                new JournalTooltipSpec.Pill(text("results.status." + status), pillColor));
+        List<Component> lines = new ArrayList<>();
         if ("failed".equals(status) && failure != null) {
-            spec.line(text("failure." + failure).copy().withStyle(TooltipBuilder.NEGATIVE));
+            lines.add(text("failure." + failure).copy().withStyle(TooltipBuilder.NEGATIVE));
         } else {
-            spec.line(text(status).copy().withStyle(TooltipBuilder.LABEL));
+            lines.add(text(status).copy().withStyle(TooltipBuilder.LABEL));
         }
         if (canCalculate) {
-            spec.footer(null, Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.click_action"),
-                    TooltipBuilder.ACCENT, text("calculate_action"));
+            lines.add(text("calculate_action").copy().withStyle(TooltipBuilder.HINT));
         }
-        return spec.build();
-    }
-
-    @Override
-    public @Nullable UiPointerHit hitTest(double x, double y) {
-        UiPointerHit hit = UiInputContainer.super.hitTest(x, y);
-        if (hit == null) {
-            return null;
-        }
-        if (hit.owns(controls.obtain("scene"))) {
-            return JournalRichTooltip.attach(hit, sceneTooltip);
-        }
-        if (hit.owns(controls.obtain("calculate"))) {
-            return JournalRichTooltip.attach(hit, calculateTooltip);
-        }
-        return hit;
+        return List.copyOf(lines);
     }
 
     private UiControl place(String key, int left, int top, int controlWidth) {

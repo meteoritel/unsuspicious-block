@@ -15,7 +15,6 @@ import com.meteorite.meteosuikit.api.text.TextMeasurer;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
-import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -85,7 +84,7 @@ final class ScenarioExpandedOverlay {
                 ScenarioSession.text("conditions.heading"));
         content.setContentSource(() -> ScenarioPageBuilder.copyForLightbox(owner.tree()));
         content.setBackground(ScenarioDetailPanel::renderConditionBackground);
-        return new RichLightboxContent(owner, content);
+        return new RichLightboxContent(content);
     }
 
     private static Component text(String key, Object... args) {
@@ -93,19 +92,14 @@ final class ScenarioExpandedOverlay {
     }
 
     /**
-     * 委托灯箱内容，在保留全部平移/缩放与焦点行为的前提下升级命中节点的富 Tooltip 呈现。
+     * 委托灯箱内容，在保留全部平移/缩放与焦点行为的前提下升级命中节点的 Tooltip 阴影渲染。
      */
-    private record RichLightboxContent(ScenarioDetailPanel owner, UiDocumentLightboxContent delegate)
+    private record RichLightboxContent(UiDocumentLightboxContent delegate)
             implements UiLightbox.Content, UiStatefulTarget, UiLayoutSource {
 
         @Override
         public @Nullable UiPointerHit hitTest(double x, double y) {
-            UiPointerHit hit = delegate.hitTest(x, y);
-            if (hit == null || hit.tooltip() == null) {
-                return hit;
-            }
-            JournalTooltipSpec spec = owner.richTooltip(hit.tooltip().tooltip());
-            return spec != null ? JournalRichTooltip.attach(hit, spec) : hit;
+            return JournalRichTooltip.attachText(delegate.hitTest(x, y));
         }
 
         @Override public int contentWidth() { return delegate.contentWidth(); }

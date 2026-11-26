@@ -1,9 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.meteosuikit.api.render.UiIcon;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
 import com.meteorite.unsuspiciousblock.client.ui.panel.ItemGridPanel;
-import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionPresentation;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.FunctionFidelity;
@@ -12,6 +10,7 @@ import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionHand
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootConditionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.LootFunctionInfo;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.LootTableCatalog.LootAcquisitionPath;
+import com.meteorite.unsuspiciousblock.core.loottable.catalog.ParameterKind;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.PathHint;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.Probability;
 import com.meteorite.unsuspiciousblock.core.loottable.catalog.UnknownReason;
@@ -20,10 +19,7 @@ import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -32,143 +28,136 @@ import java.util.List;
 /**
  * 考古笔记物品、子表与标签 Tooltip 构建器。
  *
- * <p>同时提供结构化视觉 {@link JournalTooltipSpec}（用于富图文混排渲染）与清理后的
- * 纯文本行列表回退，剥离通用条件容器冗余并消除概率提示与条件树之间的重复叙述。</p>
+ * <p>遵循 {@link TooltipBuilder} 语义色表与 Minecraft 原生分段排版：
+ * 去除卡片/按钮上已可见的图标与状态标签复现，剥离 {@link PathHint} 与条件树之间的重复叙述，
+ * 同时保留数量、触发率、概率、幸运影响、条件树与函数效果等关键信息。</p>
  */
 public final class JournalTooltipBuilder {
 
     private static final int MAX_FUNCTION_RULE_DEPTH = 8;
     private static final String KEY_PREFIX = "screen.unsuspiciousblock.archaeology_journal.";
-    private static final String KEY_PROBABILITY_CHIP = KEY_PREFIX + "tooltip.prob_chip";
-    private static final String KEY_TRIGGER_CHIP = KEY_PREFIX + "tooltip.trigger_chip";
-    private static final String KEY_ACQUIRED_CHIP = KEY_PREFIX + "tooltip.acquired_chip";
 
     private JournalTooltipBuilder() {
     }
 
     /**
-     * 构建物品格富文本视觉 Tooltip。
+     * 构建物品格 Tooltip 规格（含可选标本箱预览图）。
      */
     public static JournalTooltipSpec buildRich(ItemGridPanel.TooltipData data) {
         JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder();
         if (!data.discovered()) {
-            spec.header(UiAtlas.UNKNOWN_ITEM,
-                    Component.translatable(KEY_PREFIX + "undiscovered"),
-                    TooltipBuilder.LABEL,
-                    new JournalTooltipSpec.Pill(Component.translatable(KEY_PREFIX + "pending_analysis"), TooltipBuilder.HINT));
-            spec.line(Component.translatable(KEY_PREFIX + "tooltip.undiscovered_hint").withStyle(TooltipBuilder.HINT));
+            spec.line(Component.translatable(KEY_PREFIX + "undiscovered"), TooltipBuilder.LABEL);
+            spec.line(Component.translatable(KEY_PREFIX + "tooltip.undiscovered_hint"), TooltipBuilder.HINT);
             return spec.build();
         }
 
         Component title = data.displayName() != null ? data.displayName() : data.stack().getHoverName();
-        JournalTooltipSpec.Pill statusBadge = itemStatusBadge(data);
-        spec.itemHeader(data.stack(), title, TooltipBuilder.BODY, statusBadge);
+        spec.line(title, TooltipBuilder.BODY);
 
         List<Component> details = new ArrayList<>();
         JournalItemDetailAppender.append(details, data.stack());
         for (Component detail : details) {
             spec.line(detail);
         }
+        if (!details.isEmpty()) {
+            spec.blank();
+        }
 
-        List<JournalTooltipSpec.MetricChip> chips = buildItemMetrics(data);
-        spec.metrics(chips);
+        if (data.count() >= 0) {
+            ChatFormatting countColor = data.count() > 0 ? TooltipBuilder.POSITIVE : TooltipBuilder.LABEL;
+            spec.labelValue(KEY_PREFIX + "acquired_value",
+                    Component.literal(Integer.toString(data.count())).withStyle(countColor));
+        }
 
-        data.stack().getTooltipImage().ifPresent(spec::nativeComponent);
+        if (!data.declaredChances().isEmpty()) {
+            spec.labelValue(KEY_PREFIX + "probability_trigger",
+                    ProbabilityFormat.formatDeclaredChances(data.declaredChances())
+                            .copy().withStyle(TooltipBuilder.CONDITION_PROBABILISTIC));
+        }
 
-        appendRichProbabilityNotes(spec, data);
+        appendProbabilitySummary(spec, data);
 
+        if (data.acquisitionPaths().stream().anyMatch(LootAcquisitionPath::luckAffected)) {
+            spec.line(Component.translatable(KEY_PREFIX + "probability_luck_dependent"), TooltipBuilder.ACCENT);
+        }
+        if (data.injected()) {
+            spec.line(Component.translatable(KEY_PREFIX + "injected_loot"), TooltipBuilder.ACCENT);
+        }
         if (data.signature() == null && data.hint() != null) {
             spec.line(data.hint().copy().withStyle(TooltipBuilder.HINT, ChatFormatting.ITALIC));
         }
 
-        appendRichAcquisitionPaths(spec, data.acquisitionPaths());
+        appendAcquisitionPaths(spec, data.acquisitionPaths());
+        data.stack().getTooltipImage().ifPresent(spec::image);
         return spec.build();
     }
 
     /**
-     * 构建子表入口富文本视觉 Tooltip。
+     * 构建子表入口 Tooltip 规格（卡片已显示名称、概率与四叶草角标，仅补充 ID、幸运文本、入口条件与操作提示）。
      */
     public static JournalTooltipSpec buildChildTableRich(Component displayName, ResourceLocation tableId,
                                                            Probability probability,
                                                            List<LootConditionInfo> conditions,
                                                            boolean luckAffected) {
         JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder();
-        JournalTooltipSpec.Pill probBadge = new JournalTooltipSpec.Pill(
-                ProbabilityFormat.formatComponent(probability),
-                probability.isDisplayable() ? TooltipBuilder.POSITIVE : TooltipBuilder.LABEL);
-        spec.itemHeader(new ItemStack(Items.BOOK), displayName, TooltipBuilder.BODY, probBadge);
-
+        spec.line(displayName, TooltipBuilder.BODY);
         if (JournalTooltipSpec.showAdvancedIds()) {
-            spec.line(Component.literal(tableId.toString()).withStyle(TooltipBuilder.HINT));
+            spec.line(Component.literal(tableId.toString()), TooltipBuilder.HINT);
         }
         if (luckAffected) {
-            spec.metrics(List.of(new JournalTooltipSpec.MetricChip(
-                    UiAtlas.LUCK_ICON,
-                    Component.translatable(KEY_PREFIX + "tooltip.luck_affected"),
-                    TooltipBuilder.ACCENT, true)));
+            spec.line(Component.translatable(KEY_PREFIX + "probability_luck_dependent"), TooltipBuilder.ACCENT);
         }
         if (!conditions.isEmpty()) {
-            spec.divider();
-            spec.line(Component.translatable(KEY_PREFIX + "parent_table_conditions_header")
-                    .withStyle(TooltipBuilder.TITLE));
-            appendRichConditionTree(spec, conditions, 1, List.of());
+            spec.blank();
+            spec.section(Component.translatable(KEY_PREFIX + "parent_table_conditions_header"));
+            appendConditionTree(spec, conditions, "");
         }
-        spec.footer(null, Component.translatable(KEY_PREFIX + "tooltip.click_action"),
-                TooltipBuilder.ACCENT, Component.translatable(KEY_PREFIX + "child_table_open"));
+        spec.blank();
+        spec.line(Component.translatable(KEY_PREFIX + "child_table_open"), TooltipBuilder.HINT);
         return spec.build();
     }
 
     /**
-     * 构建物品标签合集入口的富文本视觉 Tooltip。
+     * 构建物品标签合集入口 Tooltip 规格（卡片已显示标签 ID 与 X/Y 进度，仅补充本地化名称与操作提示）。
      */
-    public static JournalTooltipSpec buildTagRich(ResourceLocation tagId, int discoveredCount, int totalCount) {
+    public static JournalTooltipSpec buildTagRich(ResourceLocation tagId) {
         JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder();
-        Component tagName = localizedTagName(tagId);
-        JournalTooltipSpec.Pill progress = new JournalTooltipSpec.Pill(
-                Component.literal(discoveredCount + "/" + totalCount),
-                discoveredCount >= totalCount && totalCount > 0 ? TooltipBuilder.POSITIVE : TooltipBuilder.TITLE);
-        spec.itemHeader(new ItemStack(Items.NAME_TAG), tagName, TooltipBuilder.BODY, progress);
+        spec.line(localizedTagName(tagId), TooltipBuilder.BODY);
         if (JournalTooltipSpec.showAdvancedIds()) {
-            spec.line(Component.literal("#" + tagId).withStyle(TooltipBuilder.HINT));
+            spec.line(Component.literal("#" + tagId), TooltipBuilder.HINT);
         }
-        spec.footer(null, Component.translatable(KEY_PREFIX + "tooltip.click_action"),
-                TooltipBuilder.ACCENT, Component.translatable(KEY_PREFIX + "tag_group_open"));
+        spec.line(Component.translatable(KEY_PREFIX + "tag_group_open"), TooltipBuilder.HINT);
         return spec.build();
     }
 
     /**
-     * 构建物品标签页「返回」格子的富文本视觉 Tooltip。
+     * 构建物品标签页「返回」格子的 Tooltip 规格。
      */
     public static JournalTooltipSpec buildTagBackRich(ResourceLocation tagId) {
         JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder();
-        spec.header(UiAtlas.icon(UiAtlas.Icon.BACK), localizedTagName(tagId), TooltipBuilder.BODY, null);
+        spec.line(localizedTagName(tagId), TooltipBuilder.BODY);
         if (JournalTooltipSpec.showAdvancedIds()) {
-            spec.line(Component.literal("#" + tagId).withStyle(TooltipBuilder.HINT));
+            spec.line(Component.literal("#" + tagId), TooltipBuilder.HINT);
         }
-        spec.footer(null, Component.translatable(KEY_PREFIX + "tooltip.click_action"),
-                TooltipBuilder.ACCENT, Component.translatable(KEY_PREFIX + "tag_group_back_tooltip"));
+        spec.line(Component.translatable(KEY_PREFIX + "tag_group_back_tooltip"), TooltipBuilder.HINT);
         return spec.build();
     }
 
     /**
-     * 构建网格右上角「推荐求解」按钮的富文本视觉 Tooltip。
+     * 构建网格右上角「推荐求解」星标的 Tooltip 规格（去重为两行清晰说明）。
      */
     public static JournalTooltipSpec buildRecommendRich(Component targetName) {
         JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder();
-        spec.header(UiAtlas.icon(UiAtlas.Icon.RECOMMEND), ScenarioSession.text("recommend.title"),
-                TooltipBuilder.TITLE, null);
-        spec.line(Component.translatable(KEY_PREFIX + "tooltip.recommend_desc", targetName)
-                .withStyle(TooltipBuilder.LABEL));
-        spec.footer(null, Component.translatable(KEY_PREFIX + "tooltip.click_action"),
-                TooltipBuilder.ACCENT, ScenarioSession.text("recommend.branch_tooltip"));
+        spec.line(Component.translatable(KEY_PREFIX + "tooltip.recommend_desc", targetName), TooltipBuilder.TITLE);
+        spec.line(ScenarioSession.text("recommend.branch_tooltip"), TooltipBuilder.HINT);
         return spec.build();
     }
 
     /**
-     * 构建物品纯文本 Tooltip 行列表（兼容文本导出与无障碍回退）。
+     * 构建物品纯文本 Tooltip 行列表。
      */
     public static List<Component> build(ItemGridPanel.TooltipData data) {
-        return buildRich(data).plainLines();
+        return buildRich(data).lines();
     }
 
     /**
@@ -178,7 +167,7 @@ public final class JournalTooltipBuilder {
                                                    Probability probability,
                                                    List<LootConditionInfo> conditions,
                                                    boolean luckAffected) {
-        return buildChildTableRich(displayName, tableId, probability, conditions, luckAffected).plainLines();
+        return buildChildTableRich(displayName, tableId, probability, conditions, luckAffected).lines();
     }
 
     /**
@@ -190,129 +179,59 @@ public final class JournalTooltipBuilder {
                 "#" + tagId);
     }
 
-    /**
-     * 为条件节点选择语义图标（群系、维度、时钟或未知警告）。
-     */
-    public static @Nullable UiIcon conditionIcon(ConditionPresentation info) {
-        if (isFidelityUnreadable(info) || isFidelityIncomplete(info)) {
-            return UiAtlas.icon(UiAtlas.Icon.HELP);
-        }
-        ResourceLocation type = info.conditionType();
-        if (!"minecraft".equals(type.getNamespace())) {
-            return null;
-        }
-        return switch (type.getPath()) {
-            case "location_check" -> isDimensionCondition(info)
-                    ? UiAtlas.icon(UiAtlas.Icon.DIMENSION) : UiAtlas.icon(UiAtlas.Icon.BIOME);
-            case "random_chance", "random_chance_with_enchanted_bonus", "table_bonus", "time_check" ->
-                    UiAtlas.icon(UiAtlas.Icon.CLOCK);
-            case "weather_check" -> UiAtlas.icon(UiAtlas.Icon.BIOME);
-            default -> null;
-        };
-    }
-
-    private static boolean isDimensionCondition(ConditionPresentation info) {
-        return info.description().getContents() instanceof TranslatableContents contents
-                && (LootConditionHandlers.I18N_PREFIX + "location_check_dimension").equals(contents.getKey());
-    }
-
-    private static @Nullable JournalTooltipSpec.Pill itemStatusBadge(ItemGridPanel.TooltipData data) {
-        Probability probability = data.probability();
-        if (probability instanceof Probability.NeedsCondition needs) {
-            boolean unresolved = ProbabilityFormat.hasUnresolvedConditions(needs.hints());
-            return new JournalTooltipSpec.Pill(
-                    Component.translatable(KEY_PREFIX
-                            + (unresolved ? "probability_unresolved_condition" : "probability_needs_condition")),
-                    unresolved ? TooltipBuilder.LABEL : TooltipBuilder.NEGATIVE);
-        }
-        if (probability instanceof Probability.Unreachable) {
-            return new JournalTooltipSpec.Pill(Component.literal("0%"), TooltipBuilder.NEGATIVE);
-        }
-        if (probability != null && probability.isZeroHit()) {
-            return new JournalTooltipSpec.Pill(
-                    Component.translatable(KEY_PREFIX + "probability_miss"), TooltipBuilder.LABEL);
-        }
-        return null;
-    }
-
-    private static List<JournalTooltipSpec.MetricChip> buildItemMetrics(ItemGridPanel.TooltipData data) {
-        List<JournalTooltipSpec.MetricChip> chips = new ArrayList<>();
-        if (data.count() >= 0) {
-            ChatFormatting countColor = data.count() > 0 ? TooltipBuilder.POSITIVE : TooltipBuilder.LABEL;
-            chips.add(new JournalTooltipSpec.MetricChip(
-                    null,
-                    Component.translatable(KEY_ACQUIRED_CHIP, data.count()),
-                    countColor, true));
-        }
-        if (!data.declaredChances().isEmpty()) {
-            chips.add(new JournalTooltipSpec.MetricChip(
-                    UiAtlas.icon(UiAtlas.Icon.CLOCK),
-                    Component.translatable(KEY_TRIGGER_CHIP,
-                            ProbabilityFormat.formatDeclaredChances(data.declaredChances())),
-                    TooltipBuilder.CONDITION_PROBABILISTIC, true));
-        }
-        Probability probability = data.probability();
-        if (probability instanceof Probability.Measured && !probability.isZeroHit()) {
-            ChatFormatting probColor = numericProbabilityColor(data, probability);
-            chips.add(new JournalTooltipSpec.MetricChip(
-                    null,
-                    Component.translatable(KEY_PROBABILITY_CHIP, ProbabilityFormat.formatComponent(probability)),
-                    probColor, true));
-        }
-        if (data.acquisitionPaths().stream().anyMatch(LootAcquisitionPath::luckAffected)) {
-            chips.add(new JournalTooltipSpec.MetricChip(
-                    UiAtlas.LUCK_ICON,
-                    Component.translatable(KEY_PREFIX + "tooltip.luck_affected"),
-                    TooltipBuilder.ACCENT, true));
-        }
-        if (data.injected()) {
-            chips.add(new JournalTooltipSpec.MetricChip(
-                    null,
-                    Component.translatable(KEY_PREFIX + "tooltip.injected_badge"),
-                    TooltipBuilder.ACCENT, true));
-        }
-        return chips;
-    }
-
-    private static void appendRichProbabilityNotes(JournalTooltipSpec.Builder spec, ItemGridPanel.TooltipData data) {
+    private static void appendProbabilitySummary(JournalTooltipSpec.Builder spec, ItemGridPanel.TooltipData data) {
         switch (data.probability()) {
             case null -> {
             }
-            case Probability.NeedsCondition(List<PathHint> hints) -> {
-                List<Component> conciseHints = ProbabilityFormat.describePathHints(hints);
-                if (!conciseHints.isEmpty()) {
-                    spec.divider();
-                    Component prefix = Component.translatable(KEY_PREFIX
-                            + (ProbabilityFormat.hasUnresolvedConditions(hints)
-                            ? "probability_unresolved_condition_detail"
-                            : "probability_needs_condition_detail")).withStyle(TooltipBuilder.NEGATIVE);
-                    MutableComponent joined = prefix.copy();
-                    for (int i = 0; i < conciseHints.size(); i++) {
-                        if (i > 0) {
-                            joined.append(Component.literal(" · ").withStyle(TooltipBuilder.HINT));
-                        }
-                        joined.append(conciseHints.get(i).copy().withStyle(TooltipBuilder.BODY));
-                    }
-                    spec.line(joined, UiAtlas.STATUS_BLOCKED, 0);
-                }
-            }
-            case Probability.Unknown(UnknownReason reason) -> {
-                spec.divider();
-                spec.line(ProbabilityFormat.describeUnknown(reason).copy().withStyle(TooltipBuilder.LABEL),
-                        UiAtlas.icon(UiAtlas.Icon.HELP), 0);
-            }
             case Probability.Measured measured -> {
                 if (measured.isZeroHit()) {
-                    spec.divider();
-                    spec.line(ProbabilityFormat.describeZeroHit(data.simulationCount())
-                            .copy().withStyle(TooltipBuilder.LABEL), UiAtlas.icon(UiAtlas.Icon.HELP), 0);
-                    spec.line(ProbabilityFormat.describeZeroHitHint().copy().withStyle(TooltipBuilder.HINT),
-                            null, 14);
+                    spec.line(ProbabilityFormat.describeZeroHit(data.simulationCount()), TooltipBuilder.LABEL);
+                    spec.line(ProbabilityFormat.describeZeroHitHint(), TooltipBuilder.HINT);
+                } else {
+                    spec.labelValue(KEY_PREFIX + "probability",
+                            ProbabilityFormat.formatComponent(measured).copy()
+                                    .withStyle(numericProbabilityColor(data, measured)));
                 }
             }
-            case Probability.Unreachable ignored -> {
+            case Probability.Unreachable ignored ->
+                    spec.labelValue(KEY_PREFIX + "probability", Component.literal("0%").withStyle(TooltipBuilder.NEGATIVE));
+            case Probability.Unknown(UnknownReason reason) ->
+                    spec.line(ProbabilityFormat.describeUnknown(reason), TooltipBuilder.LABEL);
+            case Probability.NeedsCondition(List<PathHint> hints) -> {
+                // 下方已有获取路径条件树时，只补充条件树未表达的旋钮要求（如具体的 LuckGate 数值门槛或抽样精度），
+                // 避免把 path.allConditions() 以“未满足：...”形式在顶部再复述一遍，也避免把无门槛的“幸运加成”标成未满足。
+                boolean hasTree = hasAcquisitionDetails(data.acquisitionPaths());
+                List<Component> extraHints = collectNeedsConditionHints(hints, hasTree);
+                if (!extraHints.isEmpty()) {
+                    spec.blank();
+                    spec.line(Component.translatable(KEY_PREFIX
+                                    + (ProbabilityFormat.hasUnresolvedConditions(hints)
+                                    ? "probability_unresolved_condition_detail"
+                                    : "probability_needs_condition_detail")),
+                            TooltipBuilder.NEGATIVE);
+                    for (Component hint : extraHints) {
+                        spec.line(Component.literal("• ").withStyle(TooltipBuilder.HINT)
+                                .append(hint.copy().withStyle(TooltipBuilder.BODY)));
+                    }
+                }
             }
         }
+    }
+
+    private static List<Component> collectNeedsConditionHints(List<PathHint> hints, boolean hasAcquisitionTree) {
+        if (!hasAcquisitionTree) {
+            return ProbabilityFormat.describePathHints(hints);
+        }
+        List<PathHint> nonConditionHints = new ArrayList<>();
+        for (PathHint hint : hints) {
+            if (hint instanceof PathHint.ReferencesParameter parameter
+                    && ((parameter.kind() == ParameterKind.LUCK
+                    && parameter.detail() != null && !parameter.detail().getString().isBlank())
+                    || parameter.kind() == ParameterKind.SAMPLE_COUNT)) {
+                nonConditionHints.add(hint);
+            }
+        }
+        return ProbabilityFormat.describePathHints(nonConditionHints);
     }
 
     private static ChatFormatting numericProbabilityColor(ItemGridPanel.TooltipData data, Probability probability) {
@@ -324,86 +243,99 @@ public final class JournalTooltipBuilder {
         };
     }
 
-    private static void appendRichAcquisitionPaths(JournalTooltipSpec.Builder spec, List<LootAcquisitionPath> paths) {
-        if (paths.stream().noneMatch(path -> path.hasConditions()
+    private static boolean hasAcquisitionDetails(List<LootAcquisitionPath> paths) {
+        return paths.stream().anyMatch(path -> path.hasConditions()
                 || path.sourceChildTable() != null
                 || path.sourceItemTag() != null
-                || !displayFunctions(path.functions(), 0).isEmpty())) {
+                || !displayFunctions(path.functions(), 0).isEmpty());
+    }
+
+    private static void appendAcquisitionPaths(JournalTooltipSpec.Builder spec, List<LootAcquisitionPath> paths) {
+        if (!hasAcquisitionDetails(paths)) {
             return;
         }
-        spec.divider();
+        spec.blank();
         if (paths.size() == 1) {
-            appendRichSinglePath(spec, paths.getFirst());
+            appendSinglePath(spec, paths.getFirst());
             return;
         }
-        spec.line(Component.translatable(KEY_PREFIX + "acquisition_paths_alternatives_header")
-                .withStyle(TooltipBuilder.TITLE));
+        spec.section(Component.translatable(KEY_PREFIX + "acquisition_paths_alternatives_header"));
         for (int i = 0; i < paths.size(); i++) {
             boolean isLast = i == paths.size() - 1;
-            spec.treeRow(1, isLast, List.of(), null,
-                    Component.translatable(KEY_PREFIX + "acquisition_path", i + 1).withStyle(TooltipBuilder.ACCENT));
-            appendRichPathDetails(spec, paths.get(i), List.of(!isLast));
+            String branch = isLast ? "└─ " : "├─ ";
+            String childPrefix = isLast ? "   " : "│  ";
+            spec.line(Component.literal(branch).withStyle(TooltipBuilder.HINT)
+                    .append(Component.translatable(KEY_PREFIX + "acquisition_path", i + 1)
+                            .withStyle(TooltipBuilder.ACCENT)));
+            appendPathDetails(spec, paths.get(i), childPrefix);
         }
     }
 
-    private static void appendRichSinglePath(JournalTooltipSpec.Builder spec, LootAcquisitionPath path) {
+    private static void appendSinglePath(JournalTooltipSpec.Builder spec, LootAcquisitionPath path) {
         List<Component> sources = collectSources(path);
         List<LootFunctionInfo> functions = displayFunctions(path.functions(), 0);
         if (path.hasConditions()) {
-            spec.line(Component.translatable(KEY_PREFIX + "conditions_header").withStyle(TooltipBuilder.TITLE));
+            spec.section(Component.translatable(KEY_PREFIX + "conditions_header"));
             if (!path.inheritedConditions().isEmpty()) {
                 boolean inheritedLast = path.entryConditions().isEmpty();
-                spec.treeRow(1, inheritedLast, List.of(), null,
-                        Component.translatable(KEY_PREFIX + "inherited_conditions_header")
-                                .withStyle(TooltipBuilder.ACCENT));
-                appendRichConditionTree(spec, path.inheritedConditions(), 2, List.of(!inheritedLast));
+                spec.line(Component.literal(inheritedLast ? "└─ " : "├─ ").withStyle(TooltipBuilder.HINT)
+                        .append(Component.translatable(KEY_PREFIX + "inherited_conditions_header")
+                                .withStyle(TooltipBuilder.ACCENT)));
+                appendConditionTree(spec, path.inheritedConditions(), inheritedLast ? "   " : "│  ");
             }
-            appendRichConditionTree(spec, path.entryConditions(), 1, List.of());
+            appendConditionTree(spec, path.entryConditions(), "");
         }
-        for (Component source : sources) {
-            spec.line(source, UiAtlas.icon(UiAtlas.Icon.CHILD_BADGE), 0);
+        if (!sources.isEmpty()) {
+            if (path.hasConditions()) {
+                spec.blank();
+            }
+            for (Component source : sources) {
+                spec.line(source);
+            }
         }
         if (!functions.isEmpty()) {
-            spec.line(Component.translatable(KEY_PREFIX + "function.rules_header")
-                    .withStyle(TooltipBuilder.TITLE));
-            appendRichFunctionChain(spec, functions, 1, List.of(), 0);
+            if (path.hasConditions() || !sources.isEmpty()) {
+                spec.blank();
+            }
+            spec.section(Component.translatable(KEY_PREFIX + "function.rules_header"));
+            appendFunctionChain(spec, functions, "", 0);
         }
     }
 
-    private static void appendRichPathDetails(JournalTooltipSpec.Builder spec, LootAcquisitionPath path,
-                                              List<Boolean> ancestorContinues) {
-        int depth = 2;
+    private static void appendPathDetails(JournalTooltipSpec.Builder spec, LootAcquisitionPath path, String prefix) {
         List<Component> sources = collectSources(path);
         List<LootFunctionInfo> functions = displayFunctions(path.functions(), 0);
         boolean hasFunctions = !functions.isEmpty();
         boolean conditionsLast = sources.isEmpty() && !hasFunctions;
         if (path.hasConditions()) {
-            spec.treeRow(depth, conditionsLast, ancestorContinues, null,
-                    Component.translatable(KEY_PREFIX + "conditions_header").withStyle(TooltipBuilder.ACCENT));
-            List<Boolean> condAncestors = appendAncestor(ancestorContinues, !conditionsLast);
+            appendTreeLabel(spec, prefix, conditionsLast, KEY_PREFIX + "conditions_header");
+            String condPrefix = prefix + (conditionsLast ? "   " : "│  ");
             if (!path.inheritedConditions().isEmpty()) {
                 boolean inheritedLast = path.entryConditions().isEmpty();
-                spec.treeRow(depth + 1, inheritedLast, condAncestors, null,
-                        Component.translatable(KEY_PREFIX + "inherited_conditions_header")
-                                .withStyle(TooltipBuilder.ACCENT));
-                appendRichConditionTree(spec, path.inheritedConditions(), depth + 2,
-                        appendAncestor(condAncestors, !inheritedLast));
+                appendTreeLabel(spec, condPrefix, inheritedLast, KEY_PREFIX + "inherited_conditions_header");
+                appendConditionTree(spec, path.inheritedConditions(), condPrefix + (inheritedLast ? "   " : "│  "));
             }
-            appendRichConditionTree(spec, path.entryConditions(), depth + 1, condAncestors);
+            appendConditionTree(spec, path.entryConditions(), condPrefix);
         } else if (!hasFunctions && sources.isEmpty()) {
-            spec.treeRow(depth, true, ancestorContinues, UiAtlas.icon(UiAtlas.Icon.ENABLED),
-                    Component.translatable(KEY_PREFIX + "acquisition_path_conditions_unconditional")
-                            .withStyle(TooltipBuilder.POSITIVE));
+            spec.line(Component.literal(prefix + "└─ ").withStyle(TooltipBuilder.HINT)
+                    .append(Component.translatable(KEY_PREFIX + "acquisition_path_conditions_unconditional")
+                            .withStyle(TooltipBuilder.POSITIVE)));
         }
         for (int index = 0; index < sources.size(); index++) {
             boolean isLast = index == sources.size() - 1 && !hasFunctions;
-            spec.treeRow(depth, isLast, ancestorContinues, UiAtlas.icon(UiAtlas.Icon.CHILD_BADGE), sources.get(index));
+            spec.line(Component.literal(prefix + (isLast ? "└─ " : "├─ ")).withStyle(TooltipBuilder.HINT)
+                    .append(sources.get(index)));
         }
         if (hasFunctions) {
-            spec.treeRow(depth, true, ancestorContinues, null,
-                    Component.translatable(KEY_PREFIX + "function.rules_header").withStyle(TooltipBuilder.ACCENT));
-            appendRichFunctionChain(spec, functions, depth + 1, appendAncestor(ancestorContinues, false), 0);
+            appendTreeLabel(spec, prefix, true, KEY_PREFIX + "function.rules_header");
+            appendFunctionChain(spec, functions, prefix + "   ", 0);
         }
+    }
+
+    private static void appendTreeLabel(JournalTooltipSpec.Builder spec, String prefix, boolean isLast,
+                                        String key, Object... args) {
+        spec.line(Component.literal(prefix + (isLast ? "└─ " : "├─ ")).withStyle(TooltipBuilder.HINT)
+                .append(Component.translatable(key, args).withStyle(TooltipBuilder.ACCENT)));
     }
 
     private static List<Component> collectSources(LootAcquisitionPath path) {
@@ -421,35 +353,37 @@ public final class JournalTooltipBuilder {
         return sources;
     }
 
-    private static void appendRichConditionTree(JournalTooltipSpec.Builder spec,
-                                                List<? extends ConditionPresentation> rawConditions,
-                                                int depth, List<Boolean> ancestorContinues) {
+    private static void appendConditionTree(JournalTooltipSpec.Builder spec,
+                                            List<? extends ConditionPresentation> rawConditions,
+                                            String prefix) {
         List<ConditionPresentation> conditions = ProbabilityFormat.flattenGenericWrappers(rawConditions);
         for (int i = 0; i < conditions.size(); i++) {
             ConditionPresentation info = conditions.get(i);
             boolean isLast = i == conditions.size() - 1;
+            String branch = isLast ? "└─ " : "├─ ";
+            String childPrefix = isLast ? "   " : "│  ";
+
             MutableComponent text = info.description().copy().withStyle(getConditionColor(info));
             if (isFidelityIncomplete(info)) {
                 text.withStyle(ChatFormatting.ITALIC);
             }
-            spec.treeRow(depth, isLast, ancestorContinues, conditionIcon(info), text);
+            spec.line(Component.literal(prefix + branch).withStyle(TooltipBuilder.HINT).append(text));
             if (!info.displayChildren().isEmpty()) {
-                appendRichConditionTree(spec, info.displayChildren(), depth + 1,
-                        appendAncestor(ancestorContinues, !isLast));
+                appendConditionTree(spec, info.displayChildren(), prefix + childPrefix);
             }
         }
     }
 
-    private static void appendRichFunctionChain(JournalTooltipSpec.Builder spec, List<LootFunctionInfo> chain,
-                                                int depth, List<Boolean> ancestorContinues, int recursionDepth) {
+    private static void appendFunctionChain(JournalTooltipSpec.Builder spec, List<LootFunctionInfo> chain,
+                                            String prefix, int recursionDepth) {
         chain = displayFunctions(chain, recursionDepth);
         if (chain.isEmpty()) {
             return;
         }
         if (recursionDepth >= MAX_FUNCTION_RULE_DEPTH) {
-            spec.treeRow(depth, true, ancestorContinues, UiAtlas.icon(UiAtlas.Icon.HELP),
-                    Component.translatable(KEY_PREFIX + "function.rules_nested_truncated", MAX_FUNCTION_RULE_DEPTH)
-                            .withStyle(TooltipBuilder.LABEL));
+            spec.line(Component.literal(prefix + "└─ ").withStyle(TooltipBuilder.HINT)
+                    .append(Component.translatable(KEY_PREFIX + "function.rules_nested_truncated",
+                            MAX_FUNCTION_RULE_DEPTH).withStyle(TooltipBuilder.LABEL)));
             return;
         }
         List<List<Component>> rendered = new ArrayList<>(chain.size());
@@ -464,6 +398,9 @@ public final class JournalTooltipBuilder {
                 run++;
             }
             boolean isLast = index + run == chain.size();
+            String branch = isLast ? "└─ " : "├─ ";
+            String childPrefix = prefix + (isLast ? "   " : "│  ");
+
             LootFunctionInfo info = chain.get(index);
             MutableComponent head = info.description().copy().withStyle(TooltipBuilder.BODY);
             if (run > 1) {
@@ -471,25 +408,21 @@ public final class JournalTooltipBuilder {
                                 KEY_PREFIX + "function.rules_repeat", run - 1))
                         .withStyle(TooltipBuilder.LABEL));
             }
-            spec.treeRow(depth, isLast, ancestorContinues, UiAtlas.icon(UiAtlas.Icon.BRANCH_ARROW), head);
+            spec.line(Component.literal(prefix + branch).withStyle(TooltipBuilder.HINT).append(head));
 
             boolean truncated = info.metadata().containsKey(LootFunctionInfo.METADATA_TRUNCATED);
-            List<Boolean> childAncestors = appendAncestor(ancestorContinues, !isLast);
             if (info.hasConditions()) {
                 boolean hasFollowing = !info.children().isEmpty() || truncated;
-                spec.treeRow(depth + 1, !hasFollowing, childAncestors, null,
-                        Component.translatable(KEY_PREFIX + "function.conditions_header")
-                                .withStyle(TooltipBuilder.ACCENT));
-                appendRichConditionTree(spec, info.conditions(), depth + 2,
-                        appendAncestor(childAncestors, hasFollowing));
+                appendTreeLabel(spec, childPrefix, !hasFollowing, KEY_PREFIX + "function.conditions_header");
+                appendConditionTree(spec, info.conditions(), childPrefix + (hasFollowing ? "│  " : "   "));
             }
             if (!info.children().isEmpty()) {
-                appendRichFunctionChain(spec, info.children(), depth + 1, childAncestors, recursionDepth + 1);
+                appendFunctionChain(spec, info.children(), childPrefix, recursionDepth + 1);
             }
             if (truncated) {
-                spec.treeRow(depth + 1, true, childAncestors, UiAtlas.icon(UiAtlas.Icon.HELP),
-                        Component.translatable(KEY_PREFIX + "function.rules_truncated")
-                                .withStyle(TooltipBuilder.LABEL));
+                spec.line(Component.literal(childPrefix + "└─ ").withStyle(TooltipBuilder.HINT)
+                        .append(Component.translatable(KEY_PREFIX + "function.rules_truncated")
+                                .withStyle(TooltipBuilder.LABEL)));
             }
             index += run;
         }
@@ -523,7 +456,7 @@ public final class JournalTooltipBuilder {
     }
 
     private static void appendDisplayFunctions(List<LootFunctionInfo> functions, int depth,
-                                              List<LootFunctionInfo> result) {
+                                               List<LootFunctionInfo> result) {
         for (LootFunctionInfo info : functions) {
             if (info.semantics().displayNoOp()) {
                 continue;
@@ -552,13 +485,6 @@ public final class JournalTooltipBuilder {
             }
         }
         return true;
-    }
-
-    private static List<Boolean> appendAncestor(List<Boolean> current, boolean continues) {
-        List<Boolean> next = new ArrayList<>(current.size() + 1);
-        next.addAll(current);
-        next.add(continues);
-        return List.copyOf(next);
     }
 
     private static boolean isFidelityIncomplete(ConditionPresentation info) {

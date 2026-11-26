@@ -42,22 +42,18 @@ import com.meteorite.unsuspiciousblock.client.ui.theme.JournalPalette;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.theme.UnsuspiciousUiTheme;
 import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalRichTooltip;
-import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
 import com.meteorite.unsuspiciousblock.core.journal.state.ArchaeologyJournalState;
 import com.meteorite.unsuspiciousblock.core.journal.state.ExcavationLogEntry;
 import com.meteorite.unsuspiciousblock.core.network.payload.c2s.DeleteJournalLogPayload;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.core.loottable.LootTrackingSettings;
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
-import java.util.function.Supplier;
 import net.minecraft.Util;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -119,7 +115,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
     private final ResourceLocation initialItemSearch;
     private final UiChildren<UiWidget> widgets = new UiChildren<>();
     private final List<UiWidget> widgetLayout = new ArrayList<>();
-    private final Map<UiWidget, Supplier<JournalTooltipSpec>> widgetRichTooltips = new IdentityHashMap<>();
     private final JournalContent content = new JournalContent();
     private final UiInputScope scope = new UiInputScope(content);
     private final UiLayers layers = new UiLayers(new UiLayer(scope,
@@ -555,32 +550,24 @@ public class ArchaeologyJournalScreen extends UiScreen {
         int index = hit.rowIndex(catalogPanel);
         if (viewModel.isCategoryHome() && index >= 0 && index < viewModel.categoryViews().size()) {
             var category = viewModel.categoryViews().get(index);
-            JournalTooltipSpec spec = JournalTooltipSpec.builder()
-                    .itemHeader(category.icon(), category.name(), TooltipBuilder.TITLE,
-                            new JournalTooltipSpec.Pill(
-                                    Component.literal(category.unlocked() + "/" + category.total()),
-                                    category.unlocked() >= category.total() && category.total() > 0
-                                            ? TooltipBuilder.POSITIVE : TooltipBuilder.LABEL))
-                    .line(category.description().copy().withStyle(TooltipBuilder.LABEL))
-                    .footer(null, Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.click_action"),
-                            TooltipBuilder.ACCENT,
-                            Component.translatable("screen.unsuspiciousblock.archaeology_journal.category.tooltip_open"))
-                    .build();
-            return JournalRichTooltip.attach(hit.withTextTooltip(spec.plainLines(), catalogPanel.bounds()), spec);
+            List<Component> lines = List.of(
+                    category.name().copy().withStyle(TooltipBuilder.TITLE),
+                    category.description().copy().withStyle(TooltipBuilder.LABEL)
+            );
+            return hit.withTextTooltip(lines, catalogPanel.bounds());
         }
         if (!viewModel.rowIsChild(index)) return hit;
         List<Component> parents = viewModel.rowReferencingParentNames(index);
-        JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder()
-                .header(UiAtlas.icon(UiAtlas.Icon.CHILD_BADGE),
-                        Component.translatable("screen.unsuspiciousblock.archaeology_journal.child_references", parents.size()),
-                        TooltipBuilder.TITLE, null);
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.translatable("screen.unsuspiciousblock.archaeology_journal.child_references", parents.size())
+                .withStyle(TooltipBuilder.TITLE));
         for (Component name : parents) {
-            spec.line(name.copy().withStyle(TooltipBuilder.BODY), UiAtlas.icon(UiAtlas.Icon.BRANCH_ARROW), 2);
+            lines.add(Component.literal("• ").withStyle(TooltipBuilder.HINT)
+                    .append(name.copy().withStyle(TooltipBuilder.BODY)));
         }
-        spec.line(Component.translatable("screen.unsuspiciousblock.archaeology_journal.child_probability_short")
+        lines.add(Component.translatable("screen.unsuspiciousblock.archaeology_journal.child_probability_short")
                 .withStyle(TooltipBuilder.LABEL));
-        JournalTooltipSpec built = spec.build();
-        return JournalRichTooltip.attach(hit.withTextTooltip(built.plainLines(), catalogPanel.bounds()), built);
+        return hit.withTextTooltip(lines, catalogPanel.bounds());
     }
 
     private @Nullable UiStateSnapshot resumeState;
@@ -657,14 +644,9 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 return null;
             }
             if (catalogPanel != null && hit.owns(catalogPanel)) {
-                return catalogTooltip(hit);
+                hit = catalogTooltip(hit);
             }
-            for (var entry : widgetRichTooltips.entrySet()) {
-                if (hit.owns(entry.getKey())) {
-                    return JournalRichTooltip.attach(hit, entry.getValue().get());
-                }
-            }
-            return hit;
+            return JournalRichTooltip.attachText(hit);
         }
 
         @Override
@@ -722,7 +704,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     private void positionWidgets(int previousCatalogScrollOffset, boolean updateCatalogProjection) {
         widgetLayout.clear();
-        widgetRichTooltips.clear();
 
         // 右页 chrome 由容器统一持有，根只注册实际控件。
         this.rightPage.chromeControls().forEach(this::registerWidget);
@@ -747,7 +728,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
             Component backLabel = Component.translatable("screen.unsuspiciousblock.archaeology_journal.category.back");
             this.registerWidget(JournalControls.iconButton(
                     backX, backY, JournalLayout.SEARCH_ICON_SIZE, UiAtlas.Icon.BACK,
-                    backLabel,
+                    backLabel.copy().withStyle(TooltipBuilder.BODY),
                     () -> {
                         ResourceLocation current = this.viewModel.selectedCategory();
                         if (current != null) {
@@ -760,10 +741,7 @@ public class ArchaeologyJournalScreen extends UiScreen {
                         }
                         this.viewModel.showCategoryHome();
                         rebuildWidgets();
-                    }),
-                    JournalTooltipSpec.builder()
-                            .header(UiAtlas.icon(UiAtlas.Icon.BACK), backLabel, TooltipBuilder.TITLE, null)
-                            .build());
+                    }));
         }
 
         boolean isNewCatalogPanel = this.catalogPanel == null;
@@ -802,23 +780,17 @@ public class ArchaeologyJournalScreen extends UiScreen {
                 sideTabX, managementY,
                 JournalLayout.SIDE_TAB_WIDTH, JournalLayout.SIDE_TAB_HEIGHT,
                 UiAtlas.SideTabKind.MANAGEMENT, UiAtlas.Icon.GEAR,
-                managementLabel,
+                managementLabel.copy().withStyle(TooltipBuilder.BODY),
                 () -> Objects.requireNonNull(this.minecraft).setScreen(new LootTableManagementScreen(this))
-        ), JournalTooltipSpec.builder()
-                .header(UiAtlas.icon(UiAtlas.Icon.GEAR), managementLabel, TooltipBuilder.TITLE, null)
-                .footer(null, Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.click_action"),
-                        TooltipBuilder.ACCENT,
-                        Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.open_settings"))
-                .build());
+        ));
         int helpY = managementY + JournalLayout.SIDE_TAB_HEIGHT + JournalLayout.SIDE_TAB_GAP;
-        JournalTooltipSpec helpSpec = buildHelpTooltipSpec();
         this.registerWidget(JournalControls.sideTab(
                 sideTabX, helpY,
                 JournalLayout.SIDE_TAB_WIDTH, JournalLayout.SIDE_TAB_HEIGHT,
                 UiAtlas.SideTabKind.HELP, UiAtlas.Icon.HELP_CREAM,
-                helpSpec.plainLines(),
+                buildHelpTooltipLines(),
                 () -> confirmExternalLink(HELP_WIKI_URL)
-        ), helpSpec);
+        ));
 
         createExternalLinkButtons();
 
@@ -851,32 +823,35 @@ public class ArchaeologyJournalScreen extends UiScreen {
                                                String url, String tooltipKey) {
         Component label = Component.translatable(tooltipKey);
         UiControl button = JournalControls.iconButton(x, y, WELCOME_LINK_BUTTON_SIZE, icon,
-                label, () -> confirmExternalLink(url));
-        return registerWidget(button, JournalTooltipSpec.builder()
-                .header(icon, label, TooltipBuilder.BODY, null)
-                .footer(null, Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.click_action"),
-                        TooltipBuilder.ACCENT, Component.translatable("chat.link.open"))
-                .build());
+                List.of(label.copy().withStyle(TooltipBuilder.BODY),
+                        Component.translatable("chat.link.open").withStyle(TooltipBuilder.HINT)),
+                () -> confirmExternalLink(url));
+        return registerWidget(button);
     }
 
-    // 构建图文并茂的使用提示，严格遵循 TooltipBuilder 暗底亮色语义。
-    private static JournalTooltipSpec buildHelpTooltipSpec() {
+    // 侧边帮助标签的使用说明；分条目排版并交代幸运/条件角标含义。
+    private static List<Component> buildHelpTooltipLines() {
         String tooltipBase = "screen.unsuspiciousblock.archaeology_journal.help_tooltip";
-        return JournalTooltipSpec.builder()
-                .header(UiAtlas.icon(UiAtlas.Icon.HELP_CREAM),
-                        Component.translatable(tooltipBase + ".title"), TooltipBuilder.TITLE, null)
-                .keyValue(Component.translatable(tooltipBase + ".favorite.label"), TooltipBuilder.ACCENT,
-                        Component.translatable(tooltipBase + ".favorite"))
-                .keyValue(Component.translatable(tooltipBase + ".probability.label"), TooltipBuilder.ACCENT,
-                        Component.translatable(tooltipBase + ".probability.summary")
-                                .append(Component.literal(" · ").withStyle(TooltipBuilder.HINT))
-                                .append(Component.translatable(tooltipBase + ".probability.range")))
-                .keyValue(Component.translatable(tooltipBase + ".sort.label"), TooltipBuilder.ACCENT,
-                        Component.translatable(tooltipBase + ".sort"))
-                .footer(UiAtlas.icon(UiAtlas.Icon.HELP_CREAM),
-                        Component.translatable("screen.unsuspiciousblock.archaeology_journal.tooltip.click_action"),
-                        TooltipBuilder.POSITIVE, Component.translatable(tooltipBase + ".wiki"))
-                .build();
+        Component separator = Component.translatable("screen.unsuspiciousblock.archaeology_journal.help_tooltip.separator")
+                .withStyle(TooltipBuilder.HINT);
+        return List.of(
+                Component.translatable(tooltipBase + ".title").withStyle(TooltipBuilder.TITLE),
+                Component.empty(),
+                Component.translatable(tooltipBase + ".favorite.label").withStyle(TooltipBuilder.ACCENT)
+                        .append(separator.copy())
+                        .append(Component.translatable(tooltipBase + ".favorite").withStyle(TooltipBuilder.BODY)),
+                Component.translatable(tooltipBase + ".probability.label").withStyle(TooltipBuilder.ACCENT)
+                        .append(separator.copy())
+                        .append(Component.translatable(tooltipBase + ".probability.summary").withStyle(TooltipBuilder.BODY)),
+                Component.translatable(tooltipBase + ".badge.label").withStyle(TooltipBuilder.ACCENT)
+                        .append(separator.copy())
+                        .append(Component.translatable(tooltipBase + ".badge").withStyle(TooltipBuilder.BODY)),
+                Component.translatable(tooltipBase + ".sort.label").withStyle(TooltipBuilder.ACCENT)
+                        .append(separator.copy())
+                        .append(Component.translatable(tooltipBase + ".sort").withStyle(TooltipBuilder.BODY)),
+                Component.empty(),
+                Component.translatable(tooltipBase + ".wiki").withStyle(TooltipBuilder.HINT)
+        );
     }
 
     private void rebuildViewModels() {
@@ -961,18 +936,6 @@ public class ArchaeologyJournalScreen extends UiScreen {
 
     public <T extends UiWidget> T registerWidget(T widget) {
         widgetLayout.add(widget);
-        return widget;
-    }
-
-    /** 注册控件并绑定静态富文本视觉 Tooltip。 */
-    public <T extends UiWidget> T registerWidget(T widget, JournalTooltipSpec tooltip) {
-        return registerWidget(widget, () -> tooltip);
-    }
-
-    /** 注册控件并绑定动态富文本视觉 Tooltip 供应商。 */
-    public <T extends UiWidget> T registerWidget(T widget, Supplier<JournalTooltipSpec> tooltip) {
-        widgetLayout.add(widget);
-        widgetRichTooltips.put(widget, tooltip);
         return widget;
     }
 

@@ -1,10 +1,8 @@
 package com.meteorite.unsuspiciousblock.client.ui.support;
 
-import com.meteorite.meteosuikit.api.render.UiIcon;
 import com.meteorite.meteosuikit.api.style.UiTextScheme;
 import com.meteorite.unsuspiciousblock.client.state.ScenarioSession;
 import com.meteorite.unsuspiciousblock.client.ui.overlay.ScenarioParamsOverlay;
-import com.meteorite.unsuspiciousblock.client.ui.theme.UiAtlas;
 import com.meteorite.unsuspiciousblock.client.ui.tooltip.JournalTooltipSpec;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionPresentation;
 import com.meteorite.unsuspiciousblock.core.loottable.analysis.ConditionTree;
@@ -27,7 +25,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 场景与原子条件勾选的展示文案工具：提供简洁勾选文本、当前勾选摘要与富文本暗底 Tooltip。
+ * 场景与原子条件勾选的展示文案工具：提供简洁勾选文本、当前勾选摘要与规范暗底 Tooltip。
  */
 public final class ScenarioLabel {
     private static final String CONDITION_PREFIX = "screen.unsuspiciousblock.archaeology_journal.condition.";
@@ -84,102 +82,80 @@ public final class ScenarioLabel {
     }
 
     /**
-     * 网格顶栏场景选择按钮的富文本视觉 Tooltip。
+     * 网格顶栏场景选择按钮的 Tooltip（分段列出已选环境条件与当前工具/幸运/附魔配置）。
      */
-    public static JournalTooltipSpec selectionTooltipRich(SimulationOptions options, List<String> enabledConditions,
-                                                            ScenarioParams params) {
+    public static List<Component> selectionTooltipLines(SimulationOptions options, List<String> enabledConditions,
+                                                      ScenarioParams params) {
         JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder();
         int total = options.conditions().size();
-        JournalTooltipSpec.Pill countPill = total > 0
-                ? new JournalTooltipSpec.Pill(
-                        Component.literal(enabledConditions.size() + "/" + total),
-                        enabledConditions.isEmpty() ? TooltipBuilder.LABEL : TooltipBuilder.POSITIVE)
-                : null;
-        spec.header(UiAtlas.icon(UiAtlas.Icon.PARAMS),
-                ScenarioSession.text("scene.tooltip.assumptions"),
-                TooltipBuilder.TITLE, countPill);
-
         if (total == 0) {
-            spec.line(ScenarioSession.text("no_assumptions").copy().withStyle(TooltipBuilder.LABEL));
+            spec.line(ScenarioSession.text("no_assumptions"), TooltipBuilder.LABEL);
         } else if (enabledConditions.isEmpty()) {
-            spec.line(ScenarioSession.text("conditions.none_checked", total).copy().withStyle(TooltipBuilder.LABEL));
+            spec.line(ScenarioSession.text("conditions.none_checked", total), TooltipBuilder.LABEL);
         } else {
+            spec.section(ScenarioSession.text("scene.tooltip.assumptions"));
             Set<String> enabled = new LinkedHashSet<>(enabledConditions);
             for (ConditionOption option : options.conditions()) {
                 if (!enabled.contains(option.id())) {
                     continue;
                 }
-                spec.line(shortConditionLabel(option.condition()).copy().withStyle(TooltipBuilder.BODY),
-                        UiAtlas.icon(UiAtlas.Icon.CHECKBOX_CHECKED), 0);
+                spec.line(Component.literal("• ").withStyle(TooltipBuilder.POSITIVE)
+                        .append(plainShortLabel(option.condition()).copy().withStyle(TooltipBuilder.BODY)));
             }
         }
 
-        spec.divider();
+        spec.blank();
+        spec.section(ScenarioSession.text("params.title"));
         Component toolName = toolDisplayName(options, params);
-        ItemStack toolStack = new ItemStack(BuiltInRegistries.ITEM.get(params.toolId()));
-        List<JournalTooltipSpec.MetricChip> paramChips = new ArrayList<>();
-        paramChips.add(new JournalTooltipSpec.MetricChip(
-                toolStack.isEmpty() ? null : new UiIcon.Item(toolStack),
-                toolName, TooltipBuilder.BODY, false));
-        paramChips.add(new JournalTooltipSpec.MetricChip(
-                UiAtlas.LUCK_ICON,
-                ScenarioSession.text("params.luck_short", ProbabilityFormat.formatLuck(params.luck())),
-                TooltipBuilder.ACCENT, true));
-        spec.metrics(paramChips);
-
+        spec.line(Component.translatable(KEY_PREFIX + "simulation.tool",
+                toolName.copy().withStyle(TooltipBuilder.BODY)).withStyle(TooltipBuilder.LABEL));
+        spec.line(Component.translatable(KEY_PREFIX + "simulation.conditions.current_luck",
+                Component.literal(ProbabilityFormat.formatLuck(params.luck())).withStyle(TooltipBuilder.ACCENT))
+                .withStyle(TooltipBuilder.LABEL));
         if (!params.toolEnchantments().isEmpty()) {
-            List<JournalTooltipSpec.MetricChip> enchChips = new ArrayList<>();
-            params.toolEnchantments().forEach((id, level) -> enchChips.add(new JournalTooltipSpec.MetricChip(
-                    null,
-                    ScenarioSession.text("params.enchant_level", ScenarioParamsOverlay.enchantmentName(id), level),
-                    TooltipBuilder.ACCENT, true)));
-            spec.metrics(enchChips);
+            params.toolEnchantments().forEach((id, level) -> spec.line(
+                    Component.literal("• ").withStyle(TooltipBuilder.HINT)
+                            .append(ScenarioSession.text("params.enchant_level",
+                                    ScenarioParamsOverlay.enchantmentName(id), level).copy().withStyle(TooltipBuilder.ACCENT))));
         }
 
-        spec.footer(null, Component.translatable(KEY_PREFIX + "tooltip.click_action"),
-                TooltipBuilder.ACCENT, ScenarioSession.text("conditions.tooltip_open"));
-        return spec.build();
+        spec.blank();
+        spec.line(ScenarioSession.text("conditions.tooltip_open"), TooltipBuilder.HINT);
+        return spec.build().lines();
     }
 
     /**
-     * 单个原子条件的暗底富文本视觉 Tooltip（去重、隐藏底层 ID 仅 F3+H 展示）。
+     * 单个原子条件复选框的暗底 Tooltip（仅补充行内未呈现的完整描述、复合子条件与 F3+H ID，不复现图标与药丸）。
      */
-    public static JournalTooltipSpec conditionTooltipRich(ConditionPresentation condition, boolean checked) {
+    public static List<Component> conditionTooltipLines(ConditionPresentation condition, boolean checked) {
         JournalTooltipSpec.Builder spec = JournalTooltipSpec.builder();
-        Component shortLabel = shortConditionLabel(condition);
-        JournalTooltipSpec.Pill stateBadge = new JournalTooltipSpec.Pill(
-                ScenarioSession.text(checked ? "conditions.state_enabled" : "conditions.state_disabled"),
-                checked ? TooltipBuilder.POSITIVE : TooltipBuilder.LABEL);
-        spec.header(JournalTooltipBuilder.conditionIcon(condition), shortLabel,
-                checked ? TooltipBuilder.POSITIVE : TooltipBuilder.TITLE, stateBadge);
+        Component shortLabel = plainShortLabel(condition);
+        spec.line(shortLabel, checked ? TooltipBuilder.POSITIVE : TooltipBuilder.BODY);
 
         String titleText = shortLabel.getString();
         Component fullDesc = displayDescription(condition);
         if (condition.displayChildren().isEmpty() && !fullDesc.getString().equals(titleText)) {
-            spec.line(fullDesc.copy().withStyle(TooltipBuilder.LABEL));
+            spec.line(fullDesc, TooltipBuilder.LABEL);
         } else if (condition.displayChildren().size() > 1) {
             for (ConditionPresentation child : ProbabilityFormat.flattenGenericWrappers(condition.displayChildren())) {
-                spec.line(displayDescription(child).copy().withStyle(TooltipBuilder.BODY),
-                        JournalTooltipBuilder.conditionIcon(child), 2);
+                spec.line(Component.literal("• ").withStyle(TooltipBuilder.HINT)
+                        .append(displayDescription(child).copy().withStyle(TooltipBuilder.LABEL)));
             }
         } else if (condition.displayChildren().size() == 1) {
             ConditionPresentation onlyChild = condition.displayChildren().getFirst();
             Component childDesc = displayDescription(onlyChild);
             if (!childDesc.getString().equals(titleText) && !ProbabilityFormat.isGenericWrapper(condition)) {
-                spec.line(childDesc.copy().withStyle(TooltipBuilder.LABEL),
-                        JournalTooltipBuilder.conditionIcon(onlyChild), 2);
+                spec.line(childDesc, TooltipBuilder.LABEL);
             }
         }
 
         if (JournalTooltipSpec.showAdvancedIds()) {
-            spec.line(Component.literal(condition.conditionType().toString()).withStyle(TooltipBuilder.HINT));
+            spec.line(Component.literal(condition.conditionType().toString()), TooltipBuilder.HINT);
         }
 
-        spec.footer(UiAtlas.icon(checked ? UiAtlas.Icon.CHECKBOX_CHECKED : UiAtlas.Icon.CHECKBOX_UNCHECKED),
-                Component.translatable(KEY_PREFIX + "tooltip.click_action"),
-                TooltipBuilder.ACCENT,
-                ScenarioSession.text(checked ? "conditions.click_uncheck" : "conditions.click_check"));
-        return spec.build();
+        spec.line(ScenarioSession.text(checked ? "conditions.click_uncheck" : "conditions.click_check"),
+                TooltipBuilder.HINT);
+        return spec.build().lines();
     }
 
     public static Component symbol(String value) {
