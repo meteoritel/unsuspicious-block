@@ -18,63 +18,109 @@
 
 ### 升级说明
 
-- 支持 **Minecraft 1.21.1** 和 **Java 21**。加载器需为 Fabric Loader 0.17.0+（需 Fabric API）或 NeoForge 21.1.221+。两端 JAR 均内嵌 Meteo's UI Kit。
-- **客户端和服务端需要一同升级到 1.6.0**，以使用新的战利品追踪管理协议。
-- Fabric 和 NeoForge 共用存档内的 `serverconfig/unsuspiciousblock-loot-tracking.json`。首次加载缺少该文件的世界时，会导入旧追踪规则和日志设置。更换加载器前，请先用原加载器运行 1.6.0 并打开存档完成导入。管理员可从战利品表管理页的「世界规则」编辑，也可修改文件后执行 `/reload`。
-- 将管理脚本中的旧 `/usb` 命令迁移到 `journal`、`cat`、`shimmer` 子命令。数据包中使用旧条件 `unsuspiciousblock:mud_dredging` 或 `unsuspiciousblock:random_chance_with_tool_enchantment` 的战利品表，需改用 `unsuspiciousblock:tool_enchantment`。
+- **运行环境**：支持 **Minecraft 1.21.1** 与 **Java 21**，需使用 Fabric Loader 0.17.0+（需 Fabric API）或 NeoForge 21.1.221+。内嵌 Meteo's UI Kit 0.1.0-rc1 界面库依赖，无需额外安装。
+- **多人联机**：客户端与服务端需要**同步升级至 1.6.0**。
+- **配置与存档迁移**：
+  - 首次加载旧存档时，会自动导入 v1.5.2 的战利品追踪规则、日志设置与自定义表名。
+  - Fabric 与 NeoForge 现在共用存档内的 `serverconfig/unsuspiciousblock-loot-tracking.json`；若要切换加载器，请先用原加载器启动 1.6.0 并打开一次存档完成导入。
+- **指令与数据包**：
+  - `/usb` 命令整合为 `journal`、`cat`、`shimmer` 三个子命令分组，旧脚本需同步调整。
+  - 战利品条件 `unsuspiciousblock:mud_dredging` 与 `unsuspiciousblock:random_chance_with_tool_enchantment` 已合并为 `unsuspiciousblock:tool_enchantment`，自定义数据包需同步替换。
 
 ### 新增
 
-- 新增**铜淘盘、金淘盘和黑曜石淘盘**。用淘盘在河流的「闪烁的光」淘取黏土、矿砂和考古物品，或用黑曜石淘盘在下界岩浆的「幽微的光」寻找矿物与下界合金碎片。世界生成的淘洗点会逐步恢复次数，考古笔记新增淘洗分类，安装 Jade 可查看剩余次数和恢复状态。
-- 可从嗅探兽挖掘和河流淘洗中获得**咕噜荆芥种子**。成熟植株和盆栽都能产生穿墙光环，使苦力怕与幻翼避开保护区域及其中的目标。
-- 火把花可制成**花火粉**，用作燃料、制作火把或合成**回溯粉**。对世界生成的结构使用回溯粉可在原址重新生成结构，可能覆盖玩家改建并重新生成战利品与实体。
-- NeoForge 新增 **Mekanism 10.7.19.85** 电力熔炼炉和 **Create 6.0.10** 鼓风机制陶联动。两者都能烧制陶片和陶罐并保留坯件纹饰，Create 支持批量烧制。
+#### 淘盘与淘洗玩法
+- 新增**铜淘盘**、**金淘盘**与**黑曜石淘盘**（可附魔耐久与经验修补，可在铁砧用对应材料修复），对准淘洗点长按右键即可淘取黏土、矿砂、纹饰陶片与各类遗物：
+  - **铜淘盘**：日常河流淘洗工具，基础幸运下即可获得河床晶石（青金石、紫水晶碎片、绿宝石、钻石）。
+  - **金淘盘**：水域淘洗自带 `+1.0` 幸运加成，可解锁高幸运遗物池；淘洗自然生成点时有 10% 概率在附近水面再生成一个额外淘洗点。
+  - **黑曜石淘盘**：可淘洗下界熔岩上的「幽微的光」，从岩浆表面淘取黑石、哭泣的黑曜石与下界合金碎片等物资；在水域使用时承受 `-1.0` 幸运惩罚。
+- 新增淘洗点：水域**闪烁的光**与下界熔岩**幽微的光**；支持 **Jade** 查看点位类型、剩余次数与倒计时，以及 `/usb shimmer` 管理指令。
+
+#### 咕噜荆芥
+- 嗅探兽挖掘远古种子时，有 50% 概率额外挖出**咕噜荆芥种子**（不影响原有掉落），可在耕地种植培育。
+- **成熟咕噜荆芥**与**咕噜荆芥盆栽**会产生 `17×17×17` 的穿墙保护区，使苦力怕与幻翼主动绕开该区域，并阻止站在区域内的玩家触发幻翼自然生成。
+
+#### 花火粉与回溯粉
+- 新增**花火粉**：2 朵火把花可合成为 4 份花火粉，可用作熔炉燃料（每份 800 刻）、合成火把或用于合成回溯粉。
+- 新增**回溯粉**：对自然生成的遗迹结构右键使用，可在原址逐区块重新生成结构，重置沙漠神殿、丛林神庙、要塞、下界要塞、废弃矿井与沼泽小屋的一次性宝箱、陷阱与刷怪笼（全服 40 分钟共享冷却）。
+  > **注意**：回溯粉会覆盖结构范围内的玩家改建，请勿在自己的基地或仓库中使用。
+
+#### 制陶兼容（仅 NeoForge）
+- 新增 **Mekanism**（`10.7.19+`）电力熔炼炉与 **Create**（`6.0.10`）鼓风机兼容（Create 支持批量烧制），均可烧制未烧制的纹饰陶片与陶罐并保留原有纹饰。
 
 ### 变化
 
-- **考古笔记目录**先载入分类、表层级和候选物品，随后补上概率，优先计算正在浏览的表。数据包重载后会重建目录并更新对应的概率缓存。
-- **战利品场景**可组合环境条件，调整工具、附魔和幸运，按需计算当前掉落概率。条件树展示获取分支，可为已发现的物品推荐获取条件。物品提示区分掉落概率、条件触发率与物品生成规则。
-- 更新考古笔记和战利品管理界面。考古笔记支持跨页面返回，并按世界和玩家恢复阅读位置。管理页分别显示规则直接收录的根表和通过父表引用的子表。
-- **可疑解析仪**在左下角显示扫描汇总，并在准星旁显示目标详情。按 `H` 切换面板显示。更新世界描边和物品模型，范围扫描等级越高，动画越快。
-- 重绘**纹饰陶轮台**。放入水瓶后水槽会显示水面，成品预览可旋转和放大。更新标本箱的物品纹理，猫猫信使戴上邮差帽、背上邮包。
+#### 考古笔记与战利品管理
+- **快速加载与新分类**：打开考古笔记时优先载入分类、表层级与候选物品，随后在后台逐步补全掉落概率；新增**淘筛采集**分类，数据包重载后自动刷新目录与概率缓存。
+- **情景模拟视图**：新增战利品场景栏，可自由组合环境条件，调整工具、附魔与幸运值后按需请求 10,000 次抽样模拟；「条件树」按可获得性分组展示各分支条件与幸运门槛，并可为已发现物品推荐获取条件。
+- **阅读与管理升级**：支持跨页面返回历史与记住阅读位置；「战利品表管理」区分直接收录的顶层表与父表引用的子表，新增「最近遇到」筛选、按需搜索、内置规则开关、保存前变更预览及补充表名语言管理。
+
+#### 玩法与外观优化
+- **泥底打捞重做**：按水域分化战利品池（漂流船货、内陆淡水、海洋/海滩遗物及沼泽专属表），并新增可开启出整箱船货的**沉船木桶**；安装 **Relics** 时，开阔水域有 2% 概率额外捞出 Relics 饰品。
+- **可疑解析仪**：扫描汇总改为左下角 HUD 面板与准星旁目标详情展示（按 `H` 键切换显示），更新物品模型、扫描动画与世界透视描边。
+- **外观与提示重绘**：重绘**纹饰陶轮台**，更新**标本箱**纹理，更新**可疑扫描仪**纹理与动画。
+- **Lootr 联动（仅 NeoForge）**：优化多人共享下的记录归属与扫描绑定，仅将玩家实际领取的物品计入各自的考古笔记。
 
 ### 修复
 
-- 修复制陶配方与原版熔炉及第三方配方读取的兼容问题。原版熔炉按坯件保留纹饰，JEI 可查看陶片和陶罐的烧制配方。
-- 修复淘洗产物飞过玩家却无法及时拾取的问题。河流淘洗从标签中的有效纹样随机产出陶片。
-- 修复部分条件组合和战利品引用路径的显示与模拟结果不一致的问题，并修正标本箱内容写回与猫猫商人到期处理。
-- 旧世界的自定义表名在首次导入后会记录完成状态，重载时会保留此后的删除结果。若旧文件仍包含在此前版本删除的名称，升级后的首次导入会补入这些缺项。考古日志写入中断时会保留最近一次完整提交。
-- 包含 `1.5.3-hotfix` 中针对 NeoForge 专用服务器连接失败的修复。
+- 修复未烧制陶片与陶罐配方与在与 Mekanism 模组共同安装时在加载阶段崩溃的问题。
+- 优化海量发掘日志下的考古笔记联机同步与保存可靠性，减少大存档登录时的卡顿或掉线风险。
+- 修复标本箱内容更新偶发异常。
+- 修复 Lootr 容器的领取归属与扫描状态判断，并在 NeoForge 启动时筛选兼容的 Lootr 版本。
+- 修复 NeoForge 专用服务器连接失败的问题（同步自 `1.5.3-hotfix`）。
 
 ### Upgrading
 
-- **Requirements** — Minecraft 1.21.1, Java 21, and either Fabric Loader 0.17.0+ with Fabric API or NeoForge 21.1.221+. Both JARs bundle Meteo's UI Kit.
-- **Multiplayer** — Update both clients and servers to 1.6.0 for the new loot-tracking management protocol.
-- **World rules** — Fabric and NeoForge use the same `serverconfig/unsuspiciousblock-loot-tracking.json` file inside each world. If the file is missing, the first load imports legacy tracking rules and log settings. Before switching loaders, open the world in 1.6.0 with its original loader to import the old settings. Admins can edit them under **World Rules** in loot table management, or edit the file and run `/reload`.
-- **Commands and data packs** — Update scripts to use the `journal`, `cat`, and `shimmer` subcommands under `/usb`. Loot tables using `unsuspiciousblock:mud_dredging` or `unsuspiciousblock:random_chance_with_tool_enchantment` must switch to `unsuspiciousblock:tool_enchantment`.
+- **Requirements**: Supports **Minecraft 1.21.1** and **Java 21**, requiring Fabric Loader 0.17.0+ (with Fabric API) or NeoForge 21.1.221+. Bundles Meteo's UI Kit 0.1.0-rc1 inside the mod JAR, so no separate install is required.
+- **Multiplayer**: Both clients and servers must update to **1.6.0**.
+- **Configuration & save migration**:
+  - Loading an existing save for the first time automatically imports v1.5.2 loot tracking rules, log settings, and custom table names.
+  - Fabric and NeoForge now share `serverconfig/unsuspiciousblock-loot-tracking.json` inside the world folder; before switching loaders, open the world once in 1.6.0 with your original loader first so the settings import cleanly.
+- **Commands & data packs**:
+  - `/usb` commands are reorganized into `journal`, `cat`, and `shimmer` subcommands; update existing scripts accordingly.
+  - Loot conditions `unsuspiciousblock:mud_dredging` and `unsuspiciousblock:random_chance_with_tool_enchantment` have been merged into `unsuspiciousblock:tool_enchantment`; custom data packs must update to match.
 
 ### Added
 
-- **Panning** — Use copper, gold, or obsidian pans at river Shimmers to recover clay, minerals, and archaeological items. Use an obsidian pan at Glimmers in Nether lava to find minerals and Netherite Scrap. World-generated spots gradually replenish. The journal has a panning category, and Jade shows remaining uses and recovery status.
-- **Purrmint** — Find seeds through Sniffer digging or river panning. Mature plants and potted Purrmint repel Creepers and Phantoms from the protected area and its occupants. The effect reaches through walls.
-- **Spark Dust and Rewind Dust** — Craft Spark Dust from Torchflowers and use it for fuel, torches, or crafting Rewind Dust. Use Rewind Dust on a naturally generated structure to regenerate it in place. This can overwrite player changes and regenerate loot and entities.
-- **NeoForge pottery integrations** — Mekanism 10.7.19.85's Energized Smelter and Create 6.0.10's Encased Fan can fire unfired sherds and pots. Create supports bulk firing, and both methods preserve the patterns on the input.
+#### Panning & Shimmer Spots
+- Added the **Copper Pan**, **Gold Pan**, and **Obsidian Pan** (enchantable with Unbreaking and Mending, and repairable on an anvil with their matching material). Hold right-click on a panning spot to wash out clay, mineral silt, pottery sherds, and relics:
+  - **Copper Pan**: Everyday river panning tool; can uncover riverbed minerals (lapis lazuli, amethyst shards, emeralds, diamonds) at baseline luck.
+  - **Gold Pan**: Grants `+1.0` luck in water and unlocks the high-luck relic pool; harvesting a natural spot also has a 10% chance to spawn an extra panning spot on nearby water.
+  - **Obsidian Pan**: Works on Nether lava **Glimmers** to yield blackstone, crying obsidian, Netherite Scrap, and more; carries a `-1.0` luck penalty when used in water.
+- Added panning spots: **Shimmers** in water and **Glimmers** on Nether lava; supports **Jade** to show spot type, remaining uses, and countdown timers, plus `/usb shimmer` management commands.
+
+#### Purrmint
+- Sniffer digging now has a 50% chance to unearth an extra **Purrmint Seed** (without affecting existing drops), which can be grown on farmland.
+- **Mature Purrmint** and **Potted Purrmint** project a `17×17×17` protection area through walls that steers Creepers and Phantoms away and prevents Phantoms from spawning naturally on players standing inside.
+
+#### Spark Dust & Rewind Dust
+- Added **Spark Dust**: Craft 2 Torchflowers into 4 Spark Dust; usable as furnace fuel (800 ticks each), for crafting torches, or as an ingredient for Rewind Dust.
+- Added **Rewind Dust**: Right-click any naturally generated structure to regenerate it in place chunk by chunk, resetting one-time chests, traps, and spawners in Desert Temples, Jungle Temples, Strongholds, Nether Fortresses, Mineshafts, and Swamp Huts (40-minute server-wide shared cooldown).
+  > **Warning**: Rewind Dust overwrites player builds and edits inside the structure bounds—do not use it inside your base or storage areas.
+
+#### Pottery Compatibility (NeoForge Only)
+- Added support for firing unfired pottery sherds and pots in **Mekanism** (`10.7.19+`) Energized Smelters and **Create** (`6.0.10`) Encased Fans (with bulk firing in Create), preserving their patterns.
 
 ### Changed
 
-- **Archaeology Journal catalogue** — Categories, table hierarchies, and possible drops appear while odds are still being calculated. The table you are viewing takes priority. Reloading data packs rebuilds the catalogue and updates the affected odds cache.
-- **Loot scenarios** — Combine environmental conditions, change tools, enchantments, and luck, and calculate odds on demand. The condition tree shows acquisition paths and can recommend settings for discovered items. Item tooltips distinguish drop odds, individual condition chances, and rules that modify the generated items.
-- **Reading and management** — Updated the journal and loot management screens. The journal supports back navigation across pages and restores the reading position per player and world. Loot table management distinguishes tracked root tables from child tables referenced by a parent.
-- **Suspicious Reader** — Scan results now appear in a bottom-left summary and a target panel near the crosshair. Press `H` to toggle the panels. World outlines and the item model were updated, and higher scan levels animate faster.
-- **Models and textures** — The Decorated Pottery Wheel has a redrawn model, a basin that shows water when a water bottle is inserted, and an output preview you can rotate and zoom. Specimen Boxes have a new item texture, and Messenger Cats wear a postal cap and satchel.
+#### Archaeology Journal & Loot Management
+- **Fast loading & new category**: Opening the Archaeology Journal loads categories, table hierarchies, and possible drops first, then fills in drop odds in the background; added the **Panning** category, and data-pack reloads refresh the catalogue and odds cache automatically.
+- **Loot scenarios view**: Added a Loot Scenarios bar where you can combine world conditions and adjust tools, enchantments, and luck to run a 10,000-sample simulation on demand; the **Condition tree** groups branches by availability with luck gates and can recommend setups for discovered items.
+- **Reading & management upgrades**: Added cross-page back navigation and remembered reading positions. Loot table management separates top-level tracked tables from child tables referenced by parents, adds a *Recently Encountered* filter, on-demand search, built-in rule toggles, pre-save change previews, and per-language supplemental table name editing.
+
+#### Gameplay & Visual Polish
+- **Mud Dredging rework**: Rebuilt into biome-specific pools (drifting freight, inland freshwater, ocean/beach relics, and a dedicated swamp pool) and added **Shipwreck Barrels** that open into full chest loot; with **Relics** installed, open-water catches have a 2% chance to drop a Relics item.
+- **Suspicious Reader**: Scan results now appear in a bottom-left HUD summary alongside target details near your crosshair (press `H` to toggle), with updated item models, scan animations, and world outlines.
+- **Model & texture updates**: Redrew the **Decorated Pottery Wheel**, refreshed the **Specimen Box** texture, and updated the **Suspicious Reader** texture and animations.
+- **Lootr integration (NeoForge Only)**: Improved multiplayer loot attribution and scan binding so each player's journal only records the items they personally claim.
 
 ### Fixed
 
-- Fixed pottery recipe compatibility with vanilla furnaces and third-party recipe readers. Vanilla furnaces preserve the patterns on the input, and JEI shows firing recipes for sherds and pots.
-- Fixed panning drops flying past players before they could be picked up. River panning now selects sherd patterns at random from the loot table's item tag.
-- Fixed discrepancies between displayed conditions, loot table reference paths, and simulation results. Also fixed Specimen Box inventory updates and Merchant Cat expiration.
-- Legacy world loot table names are now marked as imported, and reloads respect subsequent deletions. If the old file still contains names deleted in an earlier version, the first import after upgrading can fill those gaps. An interrupted journal log write leaves the last complete batch available.
-- Includes the NeoForge dedicated-server connection fix from `1.5.3-hotfix`.
+- Fixed a crash during the loading phase involving unfired pottery sherd and pot recipes when installed alongside Mekanism.
+- Improved Archaeology Journal multiplayer sync and save reliability for large excavation logs, reducing login lag and disconnects on heavy saves.
+- Fixed occasional Specimen Box inventory update issues.
+- Fixed Lootr claim attribution and scan state tracking, and added NeoForge startup version filtering for compatible Lootr versions.
+- Fixed NeoForge dedicated-server connection failures (merged from `1.5.3-hotfix`).
 
 [完整改动 / Full diff][1.6.0-diff]
 
