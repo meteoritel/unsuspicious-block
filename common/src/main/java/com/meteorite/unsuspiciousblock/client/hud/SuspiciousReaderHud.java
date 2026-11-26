@@ -217,7 +217,6 @@ public final class SuspiciousReaderHud {
 
     private static void panel(GuiGraphics graphics, int x, int y, int width, int height, int alpha) {
         UiSurfaceSkin.fill(withAlpha(BACKGROUND, alpha)).paint(graphics, new UiRect(x, y, width, height), UiControlStyle.State.NORMAL);
-        graphics.fill(x, y, x + 1, y + height, withAlpha(ACCENT, alpha));
     }
 
     // 绘制已按宽度截断的缓存文本；空串代表该行无需绘制
