@@ -2,6 +2,7 @@ package com.meteorite.unsuspiciousblock.core.pan;
 
 import com.meteorite.unsuspiciousblock.core.entity.ShimmerEntity;
 import com.meteorite.unsuspiciousblock.core.pan.variant.ShimmerVariant;
+import com.meteorite.unsuspiciousblock.core.pan.variant.AnchorRule;
 import com.meteorite.unsuspiciousblock.core.pan.variant.ShimmerVariants;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import net.minecraft.core.BlockPos;
@@ -15,8 +16,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -41,6 +40,7 @@ public final class ShimmerSpawnService {
     // 挑选玩家附近加载区块时的最大重试次数
     private static final int CHUNK_PICK_ATTEMPTS = 8;
     private static final int SPAWN_RADIUS_CHUNKS = 8;
+    private static final int REGENERATION_RADIUS = 5;
     private static final List<ChunkPos> SPAWN_OFFSETS = createSpawnOffsets();
     private static MinecraftServer boundServer;
 
@@ -138,11 +138,27 @@ public final class ShimmerSpawnService {
             return false;
         }
         ServerPlayer target = players.get(level.getRandom().nextInt(players.size()));
-        ChunkPos chunkPos = pickLoadedChunk(level, target, ShimmerVariants.WATER);
-        if (chunkPos == null) {
-            return false;
+        ChunkPos center = target.chunkPosition();
+        int seaLevel = surfaceSearchCenter(level, variant);
+        int spacing = Services.PANNING_CONFIG.getSpacingBlocks();
+        int[] tried = new int[CHUNK_PICK_ATTEMPTS];
+        for (int attempt = 0; attempt < tried.length; attempt++) {
+            int offsetIndex = level.getRandom().nextInt(SPAWN_OFFSETS.size() - attempt);
+            // 将剩余区间的随机秩映射为未使用的下标。
+            int insertion = 0;
+            while (insertion < attempt && tried[insertion] <= offsetIndex) {
+                offsetIndex++;
+                insertion++;
+            }
+            System.arraycopy(tried, insertion, tried, insertion + 1, attempt - insertion);
+            tried[insertion] = offsetIndex;
+            ChunkPos offset = SPAWN_OFFSETS.get(offsetIndex);
+            ChunkPos chunk = new ChunkPos(center.x + offset.x, center.z + offset.z);
+            if (trySpawnInChunk(level, ledger, chunk, variant, SpawnTrigger.NATURAL, seaLevel, spacing)) {
+                return true;
+            }
         }
-        return trySpawnInChunk(level, ledger, chunkPos, ShimmerVariants.WATER, SpawnTrigger.NATURAL, false);
+        return false;
     }
 
     // 预计算圆形范围，确保八次机会都抽取范围内的区块，不浪费在方形四角。
@@ -158,37 +174,24 @@ public final class ShimmerSpawnService {
         return List.copyOf(offsets);
     }
 
-    // 保留按玩家抽样的聚集加权；最多八次筛选半径八区块内已加载、且落在该变体生成域内的区块。
-    @Nullable
-    private static ChunkPos pickLoadedChunk(ServerLevel level, ServerPlayer player, ShimmerVariant variant) {
-        ChunkPos center = player.chunkPosition();
-        ShimmerLedger ledger = ShimmerLedger.of(level);
-        int seaLevel = surfaceSearchCenter(level, variant);
-        for (int attempt = 0; attempt < CHUNK_PICK_ATTEMPTS; attempt++) {
-            ChunkPos offset = SPAWN_OFFSETS.get(level.getRandom().nextInt(SPAWN_OFFSETS.size()));
-            ChunkPos candidate = new ChunkPos(center.x + offset.x, center.z + offset.z);
-            if (level.isLoaded(candidate.getWorldPosition())
-                    && !ledger.isCoolingDown(candidate, level.getGameTime())
-                    && variant.spawnDomain().acceptsChunk(level, candidate, seaLevel)) {
-                return candidate;
-            }
-        }
-        return null;
-    }
-
     // 落点搜索的基准高度必须取自区块生成器：Level#getSeaLevel 是固定值 63，在下界会定位到错误的层高。
     private static int surfaceSearchCenter(ServerLevel level, ShimmerVariant variant) {
         return variant.spawnDomain().surfaceSearchCenter(level.getChunkSource().getGenerator());
     }
 
-    // 在区块内做水平游走，命中生成域中的开阔液面且间距足够时生成
-    private static boolean trySpawnInChunk(ServerLevel level, ShimmerLedger ledger, ChunkPos chunkPos,
-                                           ShimmerVariant variant, SpawnTrigger trigger, boolean bypassCooldown) {
-        if (!bypassCooldown && ledger.isCoolingDown(chunkPos, level.getGameTime())) return false;
-        BlockPos surfacePos = ShimmerPlacement.wanderForSurface(level, level.getRandom(), chunkPos,
-                variant, surfaceSearchCenter(level, variant),
-                pos -> !ledger.isTooClose(pos, Services.PANNING_CONFIG.getSpacingBlocks()));
-        return surfacePos != null && spawnShimmer(level, surfacePos, variant, trigger) != null;
+    private static boolean isChunkUnavailable(ServerLevel level, ChunkPos chunk) {
+        return level.getChunkSource().getChunkNow(chunk.x, chunk.z) == null
+                || !level.areEntitiesLoaded(chunk.toLong());
+    }
+
+    private static boolean trySpawnInChunk(ServerLevel level, ShimmerLedger ledger, ChunkPos chunk,
+                                           ShimmerVariant variant, SpawnTrigger trigger, int seaLevel, int spacing) {
+        if (isChunkUnavailable(level, chunk) || ledger.isCoolingDown(chunk, level.getGameTime())) {
+            return false;
+        }
+        BlockPos surface = ShimmerPlacement.wanderForSurface(level, level.getRandom(), chunk, variant, seaLevel,
+                pos -> !ledger.isOccupied(pos) && !ledger.isTooClose(pos, spacing));
+        return surface != null && spawnShimmer(level, surface, variant, trigger) != null;
     }
 
     // 底层生成入口：按变体创建实体并完成初始化、账本登记与演出。
@@ -206,42 +209,47 @@ public final class ShimmerSpawnService {
         if (!level.addFreshEntity(shimmer)) {
             return null;
         }
-        ShimmerLedger.of(level).register(shimmer.getUUID(), waterPos,
-                shimmer.getSpawnSource(), variant.id(), shimmer.getExpiresAt());
         shimmer.playSpawnEffects(level);
         if (trigger == SpawnTrigger.NATURAL) shimmer.broadcastNaturalSpawn(level);
         return shimmer;
     }
 
-    // 每次自然点淘洗成功后预留的概率入口；普通工具概率为零，特殊点不能递归触发。
-    // 调用者须在成功消耗次数后调用，最后一次采集导致来源消散也允许本次生成。
-    public static boolean tryRegenerateAfterHarvest(ServerLevel level, ShimmerEntity harvested, double chance) {
-        if (harvested.level() != level || !harvested.isNaturalSpawn()
-                || !Double.isFinite(chance) || chance <= 0.0D || chance > 1.0D
-                || level.getRandom().nextDouble() >= chance) return false;
+    /** 每次成功淘洗自然点至多再生一个特殊点，最后一次淘洗同样参与。 */
+    public static void tryRegenerateAfterHarvest(ServerLevel level, ShimmerEntity harvested, double chance) {
+        if (harvested.getSpawnSource() != ShimmerLedger.Source.NATURAL || chance <= 0.0D
+                || level.getRandom().nextDouble() >= chance) {
+            return;
+        }
         BlockPos center = harvested.getAnchorPos();
         ShimmerVariant variant = harvested.getVariant();
+        AnchorRule anchor = variant.anchor();
         ShimmerLedger ledger = ShimmerLedger.of(level);
-        Set<BlockPos> occupiedPositions = new HashSet<>();
-        for (int x = (center.getX() - 5) >> 4; x <= (center.getX() + 5) >> 4; x++) {
-            for (int z = (center.getZ() - 5) >> 4; z <= (center.getZ() + 5) >> 4; z++) {
-                ledger.entriesInChunk(new ChunkPos(x, z)).values()
-                        .forEach(entry -> occupiedPositions.add(entry.pos()));
-            }
-        }
+        int bestDistance = REGENERATION_RADIUS * REGENERATION_RADIUS;
         BlockPos selected = null;
-        int candidates = 0;
-        // 依附介质只存在于触发点所在的同一水平面，故再生落点与触发点同高：在该水平面做蓄水池抽样，
-        // 各有效液面等概率；最多检查 81 个方块。
-        for (int dx = -5; dx <= 5; dx++) {
-            for (int dz = -5; dz <= 5; dz++) {
-                if (dx * dx + dz * dz > 25 || (dx == 0 && dz == 0)) continue;
+        int ties = 0;
+        for (int dx = -REGENERATION_RADIUS; dx <= REGENERATION_RADIUS; dx++) {
+            for (int dz = -REGENERATION_RADIUS; dz <= REGENERATION_RADIUS; dz++) {
+                int distance = dx * dx + dz * dz;
+                if (distance == 0 || distance > bestDistance) {
+                    continue;
+                }
                 BlockPos pos = center.offset(dx, 0, dz);
-                if (!level.isLoaded(pos) || !variant.anchor().isValid(level, pos)) continue;
-                if (!occupiedPositions.contains(pos) && level.getRandom().nextInt(++candidates) == 0) selected = pos;
+                if (isChunkUnavailable(level, new ChunkPos(pos)) || ledger.isOccupied(pos)
+                        || !anchor.isValid(level, pos) || anchor.isFrozenAt(level, pos)) {
+                    continue;
+                }
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    ties = 0;
+                }
+                if (level.getRandom().nextInt(++ties) == 0) {
+                    selected = pos;
+                }
             }
         }
-        return selected != null && spawnShimmer(level, selected, variant, SpawnTrigger.SPECIAL) != null;
+        if (selected != null) {
+            spawnShimmer(level, selected, variant, SpawnTrigger.SPECIAL);
+        }
     }
 
     // 调试指定区块的自然生成尝试，复用正式落点流程，不改变自动尝试节拍。
@@ -249,13 +257,11 @@ public final class ShimmerSpawnService {
     public static String debugAttemptInChunk(ServerLevel level, ChunkPos chunk) {
         ShimmerLedger ledger = ShimmerLedger.of(level);
         ShimmerVariant variant = ShimmerVariants.WATER;
-        if (!level.isLoaded(chunk.getWorldPosition())) return "unloaded";
+        if (isChunkUnavailable(level, chunk)) return "unloaded";
         if (ledger.countNatural(variant.id()) >= Services.PANNING_CONFIG.getMaxNaturalPerDimension()) return "cap";
         if (ledger.isCoolingDown(chunk, level.getGameTime())) return "cooldown";
-        if (!variant.spawnDomain().acceptsChunk(level, chunk, surfaceSearchCenter(level, variant))) {
-            return "not_river";
-        }
-        return trySpawnInChunk(level, ledger, chunk, variant, SpawnTrigger.MANUAL, false)
+        return trySpawnInChunk(level, ledger, chunk, variant, SpawnTrigger.MANUAL,
+                surfaceSearchCenter(level, variant), Services.PANNING_CONFIG.getSpacingBlocks())
                 ? "success" : "no_position";
     }
 

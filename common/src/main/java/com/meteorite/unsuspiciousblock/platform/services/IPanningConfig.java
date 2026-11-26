@@ -68,6 +68,6 @@ public interface IPanningConfig {
     // 黑曜石淘盘在水域变体上的幸运减损（正值表示从幸运中扣除，让水中沉积物的产出变差）
     double getObsidianPanLuckPenalty();
 
-    // 金淘盘单次淘洗后再生一个新的自然淘洗点的概率
+    // 金淘盘每次成功淘洗自然点后再生特殊点的概率
     double getGoldPanRegenerationChance();
 }

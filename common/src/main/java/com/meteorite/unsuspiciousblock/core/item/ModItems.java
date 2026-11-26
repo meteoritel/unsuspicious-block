@@ -220,7 +220,7 @@ public class ModItems {
     }
 
     // 创建金淘盘实例——水域专属，耐久 24，可在铁砧上用金锭修复；
-    // 按配置提供幸运加成，并在淘空自然点后按配置概率再生新点
+    // 幸运与每次自然点淘洗的奖励概率由服务端配置提供。
     public static PanItem createGoldPan() {
         return new PanItem(new Item.Properties().stacksTo(1).durability(24), new PanProfile(
                 Set.of(ShimmerVariants.WATER_ID),

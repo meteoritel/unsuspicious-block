@@ -78,7 +78,8 @@ UI 场景位于 `probelib/ui_cases.py`，使用既有 Case 的动作记账、等
 | `runtime-artifact` | core / server | 指定发布 JAR 来源与摘要、专用服务器加载 |
 | `scan-take-journal` | core / gui | 扫描发现与实物交付分开、主副手让位、pending、去重、双端日志；详情/奇数窗口命中与搜索保持、取消清空、代表 PNG |
 | `journal-restart` | core / gui | 正常停服与空缓存同步恢复进度、上下文、时间、备注及历史，重复登录奖励去重和详情 PNG |
-| `panning-settlement` | core / server | 正常客户端长按、真实 tick 结算、次数/耐久/实物/日志与镜像，中断和变体门槛 |
+| `panning-settlement` | core / server | 正常客户端长按、会话时钟、切换目标、中断、变体门槛与实物结算镜像 |
+| `panning-generation` | 专项 / server | 区块接缝采样、特殊再生的锚点、来源和账本 |
 | `cat-player-journey` | core / server | 真实携带绑定、主人喂食受伤猫、食物/治疗/羁绊/镜像与冷却 |
 | `journal-viewport` | 专项 / gui | 窗口/GUI scale 矩阵、整数物理倍率、输入命中、阅读状态和 Tooltip PNG |
 | `ui-member-tree` | 专项 / gui | 双向 Tab、离焦字符、resize 旧释放、模态遮挡、活动右页与唯一业务 key |
@@ -102,7 +103,7 @@ UI 场景位于 `probelib/ui_cases.py`，使用既有 Case 的动作记账、等
 | kit 视口、输入树、笔记布局 | `scan-take-journal`、`journal-viewport`、`ui-member-tree` |
 | 配置、表单正文、管理详情 | `ui-form-bodies` |
 | 猫族关系、喂食或携带扫描 | `cat-player-journey`，按改动追加 `cat-ledger`、`cat-carried-binding` |
-| 淘盘与淘洗点 | `panning-settlement` |
+| 淘盘与淘洗点 | `panning-settlement`、`panning-generation` |
 | 模拟、目录重载、相关网络 | `journal-catalog-loading`、`simulation-reload` |
 | wiki 配方卡片导出 | `recipe-card-export` |
 | 公共网络或玩家生命周期 | 全部受影响的同步/恢复用例 |

@@ -2,7 +2,7 @@ package com.meteorite.unsuspiciousblock.client.pan;
 
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.core.item.ModItems;
-import com.meteorite.unsuspiciousblock.core.pan.variant.PanningMedium;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.PanningStatePayload;
 import net.minecraft.client.renderer.item.ItemProperties;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -10,6 +10,8 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Supplier;
 
@@ -30,16 +32,21 @@ public final class PanningVisuals {
     public static void register() {
         for (Supplier<Item> pan : ModItems.PAN_ITEMS) {
             ItemProperties.register(pan.get(), PANNING_FRAME, (stack, level, entity, seed) -> {
-                if (entity == null || !entity.isUsingItem() || entity.getUseItem() != stack) {
+                if (entity == null) {
                     return 0.0F;
                 }
-                float elapsed = entity.getTicksUsingItem();
-                if (elapsed < fillTicks(entity) * 0.5F) {
+                PanningStatePayload state = stateFor(entity, stack);
+                if (state == null) {
+                    return 0.0F;
+                }
+                float elapsed = elapsed(entity, state);
+                float fillTicks = fillTicks(state);
+                if (elapsed < fillTicks * 0.5F) {
                     return 0.0F;
                 }
                 // 相位从中间液面起步；原图从上到下依次为左、中、右、中。
-                int frame = Mth.floor(phase(entity, elapsed) / Mth.TWO_PI * 4.0F + 0.5F) % 4;
-                HumanoidArm arm = entity.getUsedItemHand() == InteractionHand.MAIN_HAND
+                int frame = Mth.floor(phase(fillTicks, elapsed) / Mth.TWO_PI * 4.0F + 0.5F) % 4;
+                HumanoidArm arm = state.hand() == InteractionHand.MAIN_HAND
                         ? entity.getMainArm() : entity.getMainArm().getOpposite();
                 if (arm == HumanoidArm.LEFT) {
                     frame = (4 - frame) % 4;
@@ -51,16 +58,23 @@ public final class PanningVisuals {
                 if (entity == null) {
                     return 0.0F;
                 }
-                PanningMedium medium = PanningMediumIndex.mediumOf(entity.getUUID());
-                // 未在淘洗或尚未同步时按水域帧组处理，与空盘阶段的表现一致
-                return medium == null ? 0.0F : medium.ordinal();
+                PanningStatePayload state = stateFor(entity, stack);
+                return state == null ? 0.0F : state.medium().ordinal();
             });
         }
     }
 
-    // 极短配置按比例缩短装水阶段，保持原有总使用时长。
-    public static float fillTicks(LivingEntity entity) {
-        return Math.min(8.0F, entity.getUseItem().getUseDuration(entity) * 0.25F);
+    private static @Nullable PanningStatePayload stateFor(LivingEntity entity, ItemStack stack) {
+        PanningStatePayload state = ClientPanningState.of(entity);
+        return state != null && entity.getItemInHand(state.hand()) == stack ? state : null;
+    }
+
+    static float elapsed(LivingEntity entity, PanningStatePayload state) {
+        return Mth.clamp(entity.level().getGameTime() - state.startedAt(), 0, state.duration());
+    }
+
+    static float fillTicks(PanningStatePayload state) {
+        return Math.min(8.0F, state.duration() * 0.25F);
     }
 
     // 平滑起手与抬盘，端点速度归零。
@@ -70,12 +84,12 @@ public final class PanningVisuals {
     }
 
     // 水面选帧和两种视角的手部运动共用相位。
-    public static float phase(LivingEntity entity, float elapsed) {
-        return Math.max(0.0F, elapsed - fillTicks(entity)) * Mth.TWO_PI / CYCLE_TICKS;
+    static float phase(float fillTicks, float elapsed) {
+        return Math.max(0.0F, elapsed - fillTicks) * Mth.TWO_PI / CYCLE_TICKS;
     }
 
     // 装水结束后逐渐进入完整摇洗幅度。
-    public static float washBlend(LivingEntity entity, float elapsed) {
-        return smooth((elapsed - fillTicks(entity)) / 5.0F);
+    static float washBlend(float fillTicks, float elapsed) {
+        return smooth((elapsed - fillTicks) / 5.0F);
     }
 }

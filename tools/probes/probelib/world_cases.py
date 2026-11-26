@@ -1,8 +1,6 @@
 """猫族关系与淘洗的真实交互场景。"""
-import json
-
 from .cases import wait_for
-from .journal_cases import journal_snapshot, new_logs
+from .journal_cases import new_logs
 
 
 def cat_ledger(case):
@@ -89,16 +87,19 @@ def cat_player_journey(case):
 def panning_settlement(case):
     case.client
     case.own_scene()
-    table = 'unsuspiciousblock:gameplay/panning/river'
-    case.own_table(table)
-    case.server.install((case.runtime.root / 'tools/probes/scripts/panning.js').read_text(encoding='utf-8'))
+    script = (case.runtime.root / 'tools/probes/scripts/panning.js').read_text(encoding='utf-8')
+    case.server.install(script)
+    case.client.install(script)
     case.defer('server', 'Probe.cleanPanning()')
     query = lambda: case.server.evaluate('Probe.panningState()')
     before = case.action('server', 'Probe.preparePanning("water")')
     entity_input_ready(case, before['target'], 'unsuspiciousblock:copper_pan')
     wait_for(query, lambda value: value['targeted'])
     case.action('client', 'Probe.holdUse()')
-    case.expect('normal input starts panning', query, lambda value: value['using'], expected='using=true')
+    started = case.expect('normal input starts panning', query, lambda value: value['using'], expected='using=true')
+    case.await_check('panning-clock', lambda: case.client.evaluate('Probe.panningClientState()'),
+                     dict(medium='WATER', hand='MAIN_HAND', duration=started['session']['duration'],
+                          startedAt=started['session']['startedAt']))
     case.expect('panning completes', query, lambda value: value['remaining'] == before['remaining'] - 1,
                 expected={'remaining': before['remaining'] - 1})
     case.action('client', 'Probe.releaseInput()')
@@ -108,8 +109,33 @@ def panning_settlement(case):
     case.equal('physical gold delivered', settled['produced'], before['produced'] + 2)
     entries = new_logs(case, before, settled)
     case.check('panning-loot', entries[0]['actual'], {'usb_sig|PLAIN|minecraft:gold_nugget|': 2})
-    case.expect('panning mirror', lambda: case.client.evaluate(f'Probe.journal({json.dumps(table)})'),
-                lambda value: value == journal_snapshot(settled), expected=journal_snapshot(settled))
+    expected_progress = {key: settled[key] for key in ('unlocked', 'claimed', 'items')}
+    case.expect('panning progress mirror', lambda: case.client.evaluate('Probe.panningClientProgress()'),
+                lambda value: value == expected_progress, expected=expected_progress)
+    case.expect('panning log summary mirror', lambda: case.client.evaluate('Probe.panningClientLogCount()'),
+                lambda value: value == len(settled['logs']), expected=len(settled['logs']))
+    case.expect('completed session clears client animation', lambda: case.client.evaluate('Probe.panningClientState()'),
+                lambda value: value is None, expected=None)
+
+    case.action('server', 'Probe.preparePanning("water")')
+    before = case.action('server', 'Probe.prepareSecondPanningTarget()')
+    entity_input_ready(case, before['target'], 'unsuspiciousblock:copper_pan')
+    case.action('client', 'Probe.holdUse()')
+    case.expect('first point starts', query, lambda value: value['using'], expected='using=true')
+    case.action('server', 'Probe.aimPanningAtSecond()')
+    switched = case.expect('aiming at the second live target interrupts', query,
+                           lambda value: not value['using'] and value['targetingSecond'],
+                           expected='using=false, targetingSecond=true')
+    case.action('client', 'Probe.releaseInput()')
+    case.check('panning-target-lock', {key: switched[key] for key in ('remaining', 'secondRemaining', 'damage', 'logs')},
+               {key: before[key] for key in ('remaining', 'secondRemaining', 'damage', 'logs')})
+
+    before = case.action('server', 'Probe.preparePanning("water")')
+    entity_input_ready(case, before['target'], 'unsuspiciousblock:copper_pan')
+    case.action('client', 'Probe.tapPanning()')
+    tapped = wait_for(query, lambda value: value['tick'] >= before['tick'] + before['duration'] + 4)
+    case.check('panning-tap', {key: tapped[key] for key in ('remaining', 'damage', 'logs', 'using')},
+               {key: before[key] for key in ('remaining', 'damage', 'logs', 'using')})
 
     before = case.action('server', 'Probe.preparePanning("water")')
     entity_input_ready(case, before['target'], 'unsuspiciousblock:copper_pan')
@@ -130,3 +156,13 @@ def panning_settlement(case):
     case.action('client', 'Probe.releaseInput()')
     for key in ('remaining', 'damage', 'produced', 'logs', 'history', 'using'):
         case.equal('unsupported variant preserves ' + key, rejected[key], before[key])
+
+
+def panning_generation(case):
+    case.server.install((case.runtime.root / 'tools/probes/scripts/panning.js').read_text(encoding='utf-8'))
+    result = case.action('server', 'Probe.panningGeneration()')
+    case.check('panning-chunk-seam', result.pop('edge'), 15)
+    case.check('panning-special-reward', result, dict(defaultChance=0.10, regenerated=True, nearest=True,
+               specialRegistered=True, naturalUnchanged=True, cooldownActive=True, chained=False, zeroChance=False))
+    case.await_check('panning-ledger-expiry', lambda: case.server.evaluate('Probe.panningLedgerExpiry()'),
+                     dict(occupied=False, marked=True))

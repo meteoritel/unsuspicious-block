@@ -27,7 +27,7 @@ import java.util.UUID;
  * <p>
  * 由于存盘持久的实体散落在各个区块中，无法廉价地直接统计全维度数量，因此上限计数、间距校验
  * 与采空冷却都由账本集中维护。账本与实体实际状态不一致时以实体为准：实体消散时
- * 主动注销自身，实体恢复 tick 时补登记；不以方块区块加载状态推断实体是否存在。
+ * 主动注销自身，实体加入管理器时补登记。
  * <p>
  * 变体是独立于来源的第二条分类轴：自然生成上限按变体分别计数，清除与统计可按变体过滤，
  * 间距校验则跨变体生效——不同介质的点本就不可能落在同一格。
@@ -82,7 +82,7 @@ public final class ShimmerLedger extends SavedData {
     private final Set<UUID> expired = new HashSet<>();
     private final Map<Long, Long> cooldowns = new HashMap<>();
     private long nextAttempt;
-    private long lastMaintenanceTime = Long.MIN_VALUE;
+    private long nextMaintenanceAt = Long.MAX_VALUE;
     private boolean hasLegacyExpirations;
 
     private ShimmerLedger() {
@@ -92,9 +92,8 @@ public final class ShimmerLedger extends SavedData {
     public static ShimmerLedger of(ServerLevel level) {
         ShimmerLedger ledger = level.getDataStorage().computeIfAbsent(FACTORY, FILE_NAME);
         long now = level.getGameTime();
-        if (ledger.lastMaintenanceTime != now) {
-            ledger.lastMaintenanceTime = now;
-            ledger.migrateLegacyExpirations(now);
+        ledger.migrateLegacyExpirations(now);
+        if (now >= ledger.nextMaintenanceAt) {
             ledger.expireDue(now);
         }
         return ledger;
@@ -106,6 +105,7 @@ public final class ShimmerLedger extends SavedData {
         }
         long deadline = now + Services.PANNING_CONFIG.getMaxLifetimeTicks();
         expirations.replaceAll((uuid, time) -> time < 0 ? deadline : time);
+        this.nextMaintenanceAt = Math.min(this.nextMaintenanceAt, deadline);
         hasLegacyExpirations = false;
         setDirty();
     }
@@ -126,6 +126,9 @@ public final class ShimmerLedger extends SavedData {
                 long expiresAt = entryTag.contains(EXPIRES_AT_TAG) ? entryTag.getLong(EXPIRES_AT_TAG) : -1L;
                 ledger.expirations.put(entryTag.getUUID(UUID_TAG), expiresAt);
                 ledger.hasLegacyExpirations |= expiresAt < 0;
+                if (expiresAt >= 0) {
+                    ledger.nextMaintenanceAt = Math.min(ledger.nextMaintenanceAt, expiresAt);
+                }
             }
         }
         ListTag expiredTags = tag.getList(EXPIRED_TAG, Tag.TAG_COMPOUND);
@@ -136,7 +139,9 @@ public final class ShimmerLedger extends SavedData {
         ListTag cooldownTags = tag.getList(COOLDOWNS_TAG, Tag.TAG_COMPOUND);
         for (int i = 0; i < cooldownTags.size(); i++) {
             CompoundTag cooldown = cooldownTags.getCompound(i);
-            ledger.cooldowns.put(cooldown.getLong(COOLDOWN_CHUNK_TAG), cooldown.getLong(COOLDOWN_UNTIL_TAG));
+            long until = cooldown.getLong(COOLDOWN_UNTIL_TAG);
+            ledger.cooldowns.put(cooldown.getLong(COOLDOWN_CHUNK_TAG), until);
+            ledger.nextMaintenanceAt = Math.min(ledger.nextMaintenanceAt, until);
         }
         ledger.nextAttempt = tag.getLong(NEXT_ATTEMPT_TAG);
         ledger.setDirty(false);
@@ -237,6 +242,7 @@ public final class ShimmerLedger extends SavedData {
         if (this.expired.contains(uuid)) return;
         this.register(uuid, pos, source, variant);
         if (source.hasLifetime() && !Long.valueOf(expiresAt).equals(this.expirations.put(uuid, expiresAt))) {
+            this.nextMaintenanceAt = Math.min(this.nextMaintenanceAt, expiresAt);
             this.setDirty();
         }
     }
@@ -251,24 +257,46 @@ public final class ShimmerLedger extends SavedData {
 
     // 只扫描有寿命的点；卸载实体到期也立即释放数量和空间约束。
     private void expireDue(long gameTime) {
-        var due = this.expirations.entrySet().stream()
-                .filter(entry -> entry.getValue() <= gameTime).map(Map.Entry::getKey).toList();
-        for (UUID uuid : due) {
-            this.unregister(uuid);
-            this.expired.add(uuid);
-            this.setDirty();
+        this.nextMaintenanceAt = Long.MAX_VALUE;
+        var expirations = this.expirations.entrySet().iterator();
+        while (expirations.hasNext()) {
+            var entry = expirations.next();
+            long deadline = entry.getValue();
+            if (deadline <= gameTime) {
+                UUID uuid = entry.getKey();
+                expirations.remove();
+                this.markForRemoval(uuid);
+            } else {
+                this.nextMaintenanceAt = Math.min(this.nextMaintenanceAt, deadline);
+            }
         }
-        if (this.cooldowns.entrySet().removeIf(entry -> entry.getValue() <= gameTime)) this.setDirty();
+        var cooldowns = this.cooldowns.values().iterator();
+        while (cooldowns.hasNext()) {
+            long deadline = cooldowns.next();
+            if (deadline <= gameTime) {
+                cooldowns.remove();
+                this.setDirty();
+            } else {
+                this.nextMaintenanceAt = Math.min(this.nextMaintenanceAt, deadline);
+            }
+        }
     }
 
     // 仅采空触发；重叠区域取较晚的截止时间。
     public void startHarvestCooldown(BlockPos pos, long gameTime, int duration) {
+        if (duration == 0) {
+            return;
+        }
         ChunkPos center = new ChunkPos(pos);
+        long deadline = gameTime + duration;
+        long earliest = Long.MAX_VALUE;
         for (int x = center.x - 1; x <= center.x + 1; x++) {
             for (int z = center.z - 1; z <= center.z + 1; z++) {
-                this.cooldowns.merge(ChunkPos.asLong(x, z), gameTime + duration, Math::max);
+                long until = this.cooldowns.merge(ChunkPos.asLong(x, z), deadline, Math::max);
+                earliest = Math.min(earliest, until);
             }
         }
+        this.nextMaintenanceAt = Math.min(this.nextMaintenanceAt, earliest);
         this.setDirty();
     }
 
@@ -321,6 +349,16 @@ public final class ShimmerLedger extends SavedData {
             result.put(uuid, this.entries.get(uuid));
         }
         return Map.copyOf(result);
+    }
+
+    /** 查询锚点是否已占用，包含当前维度尚未加载的登记项。 */
+    public boolean isOccupied(BlockPos pos) {
+        for (UUID uuid : this.entriesByChunk.getOrDefault(ChunkPos.asLong(pos), Set.of())) {
+            if (this.entries.get(uuid).pos().equals(pos)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public long cooldownRemaining(ChunkPos chunk, long gameTime) {
@@ -389,10 +427,5 @@ public final class ShimmerLedger extends SavedData {
     public void scheduleNextAttempt(long gameTime, int intervalTicks) {
         this.nextAttempt = gameTime + Math.max(1, intervalTicks);
         this.setDirty();
-    }
-
-    @Nullable
-    public Entry entryOf(UUID uuid) {
-        return this.entries.get(uuid);
     }
 }

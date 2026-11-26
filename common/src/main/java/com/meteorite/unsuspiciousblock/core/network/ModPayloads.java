@@ -36,6 +36,7 @@ import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootTableMan
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.SyncLootManagementDataPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.NotifyTableCompletionRewardPayload;
 import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalLogEditResultPayload;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.PanningStatePayload;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -54,7 +55,7 @@ import com.meteorite.unsuspiciousblock.core.network.payload.s2c.JournalTransferP
  * 公共网络声明：维护通道类型、codec 与 C2S 服务端处理函数。
  */
 public final class ModPayloads {
-    public static final String PROTOCOL_VERSION = "4.19";
+    public static final String PROTOCOL_VERSION = "4.20";
 
     private ModPayloads() {
     }
@@ -142,6 +143,8 @@ public final class ModPayloads {
             new S2C<>(ScenarioRequestRejectedPayload.TYPE, ScenarioRequestRejectedPayload.STREAM_CODEC);
     public static final S2C<SyncSimulationAssistPayload> SYNC_SIMULATION_ASSIST =
             new S2C<>(SyncSimulationAssistPayload.TYPE, SyncSimulationAssistPayload.STREAM_CODEC);
+    public static final S2C<PanningStatePayload> PANNING_STATE =
+            new S2C<>(PanningStatePayload.TYPE, PanningStatePayload.STREAM_CODEC);
 
     public static final List<S2C<?>> S2C_PAYLOADS = List.of(
             SYNC_CATALOG_HASH,
@@ -156,7 +159,8 @@ public final class ModPayloads {
             SYNC_SCENARIO_CACHE,
             SYNC_SCENARIO_RESULT,
             SCENARIO_REQUEST_REJECTED,
-            SYNC_SIMULATION_ASSIST
+            SYNC_SIMULATION_ASSIST,
+            PANNING_STATE
     );
 
     static {

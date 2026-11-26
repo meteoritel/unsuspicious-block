@@ -1,6 +1,8 @@
 package com.meteorite.unsuspiciousblock.core.entity;
 
 import com.meteorite.unsuspiciousblock.core.item.PanItem;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.PanningStatePayload;
+import com.meteorite.unsuspiciousblock.core.pan.PanningSession;
 import com.meteorite.unsuspiciousblock.core.pan.ShimmerLedger;
 import com.meteorite.unsuspiciousblock.core.pan.ShimmerSpawnService;
 import com.meteorite.unsuspiciousblock.core.pan.variant.GlowStyle;
@@ -15,6 +17,7 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
@@ -29,7 +32,9 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.OptionalLong;
+import java.util.Set;
 
 /***
  * 闪烁的光——淘盘专属的液面淘洗点实体的抽象基类，全部变体共用这套机制骨架。
@@ -72,28 +77,16 @@ public abstract class ShimmerEntity extends Entity {
     private static final EntityDataAccessor<Boolean> DATA_WORLDGEN =
             SynchedEntityData.defineId(ShimmerEntity.class, EntityDataSerializers.BOOLEAN);
 
-    // 正在淘洗本点的玩家 UUID 集合，以逗号分隔同步。
-    // 变体本身不需要同步（两侧各自查注册表），但「谁在淘洗我」只有服务端知道，
-    // 远端玩家要显示正确的摇洗帧组就必须由服务端下发。
-    private static final EntityDataAccessor<String> DATA_PANNERS =
+    // 保留 Fabric 已发布的实体数据槽位，旧端的 UUID 字符串仍可解码。
+    private static final EntityDataAccessor<String> DATA_LEGACY_PANNERS =
             SynchedEntityData.defineId(ShimmerEntity.class, EntityDataSerializers.STRING);
 
-    // 淘洗者集合的刷新超时：服务端每 tick 被 markPanning 刷新一次，连续两刻未刷新即剔除
-    private static final long PANNER_TIMEOUT_TICKS = 2L;
-
-    private long lastPanningTick = Long.MIN_VALUE;
+    private final Set<ServerPlayer> panners = new HashSet<>();
     private int clientWorkTicks;
-    // 服务端权威的淘洗者集合：玩家 UUID -> 最近一次刷新时刻
-    private final Map<UUID, Long> panners = new HashMap<>();
-    // 客户端：{@link #getPanners()} 的解析缓存，快照字符串未变时直接复用
-    @Nullable
-    private String parsedPannerSnapshot;
-    private List<UUID> parsedPanners = List.of();
 
     // 是否有寿命：世界生成来源恒为 false，它不自然消散也不计入自然生成上限。
     private boolean hasLifetime = true;
     private boolean specialSpawn;
-    private boolean ledgerRegistered;
     // 绝对游戏时间截止点；世界生成来源恒为 0。
     private long expiresAt;
     // 世界生成来源的次数恢复：初始次数上限、固定恢复周期与下一恢复时刻。
@@ -127,10 +120,10 @@ public abstract class ShimmerEntity extends Entity {
 
     @Override
     protected void defineSynchedData(SynchedEntityData.@NotNull Builder builder) {
-        builder.define(DATA_PAN_REMAINING, Services.PANNING_CONFIG.getPanUses());
+        builder.define(DATA_PAN_REMAINING, 0);
         builder.define(DATA_PANNING, false);
         builder.define(DATA_WORLDGEN, false);
-        builder.define(DATA_PANNERS, "");
+        builder.define(DATA_LEGACY_PANNERS, "");
     }
 
     // 在指定水方块上初始化淘洗点：有寿命来源用 lifetimeTicks 作绝对寿命，
@@ -217,11 +210,6 @@ public abstract class ShimmerEntity extends Entity {
         this.entityData.set(DATA_PAN_REMAINING, Math.max(0, remaining));
     }
 
-    // 仅自然来源可触发特殊生成；特殊来源虽然有寿命，也不属于自然来源。
-    public boolean isNaturalSpawn() {
-        return this.hasLifetime && !this.specialSpawn;
-    }
-
     // 本实体所属变体——依附介质与全部表现参数都由它决定，由具体子类返回各自常量。
     public abstract ShimmerVariant getVariant();
 
@@ -235,73 +223,28 @@ public abstract class ShimmerEntity extends Entity {
         return this.getVariant().anchor().isFrozenAt(this.level(), this.blockPosition());
     }
 
-    // 起手、持续淘洗和结算都即时检查依附面，避免依附失效与实体 tick 的先后顺序造成误结算。
-    public boolean canPan() {
+    private boolean canPan() {
         BlockPos pos = this.level().isClientSide() ? this.blockPosition() : this.anchorPos;
+        var anchor = this.getVariant().anchor();
         return !this.isRemoved() && this.getPanRemaining() > 0
-                && this.getVariant().anchor().isValid(this.level(), pos);
+                && anchor.isValid(this.level(), pos) && !anchor.isFrozenAt(this.level(), pos);
     }
 
-    // 只有服务端验证过的有效淘洗才能刷新工作状态；不持久化临时演出状态。
-    public void markPanning(Player player) {
-        if (this.level().isClientSide() || !this.canPan()) {
-            return;
-        }
-        this.lastPanningTick = this.level().getGameTime();
+    /** 在服务端检查依附、冻结、次数和到期状态。 */
+    public boolean canPanOnServer() {
+        return this.canPan() && !this.discardIfExpired();
+    }
+
+    /** 已接受的玩家会话开始驱动点位演出。 */
+    public void startPanning(ServerPlayer player) {
+        this.panners.add(player);
         this.entityData.set(DATA_PANNING, true);
-        // 集合新增成员时才同步一次，避免每 tick 重复发包
-        if (this.panners.put(player.getUUID(), this.lastPanningTick) == null) {
-            this.publishPanners();
-        }
     }
 
-    // 同步给客户端的淘洗者集合快照，供物品属性选用摇洗帧组
-    public String getPannersSnapshot() {
-        return this.entityData.get(DATA_PANNERS);
-    }
-
-    // 解析后的淘洗者集合；快照字符串只在集合变化时更新（见 publishPanners），
-    // 因此按字符串缓存解析结果，避免渲染线程每帧重复 split 与 UUID.fromString。仅客户端渲染线程访问。
-    public List<UUID> getPanners() {
-        String snapshot = this.getPannersSnapshot();
-        if (snapshot.equals(this.parsedPannerSnapshot)) {
-            return this.parsedPanners;
-        }
-        List<UUID> players = new ArrayList<>();
-        if (!snapshot.isEmpty()) {
-            for (String part : snapshot.split(",")) {
-                try {
-                    players.add(UUID.fromString(part));
-                } catch (IllegalArgumentException ignored) {
-                    // 容忍格式错误的单条记录，不影响同一快照里的其它玩家
-                }
-            }
-        }
-        this.parsedPannerSnapshot = snapshot;
-        this.parsedPanners = List.copyOf(players);
-        return this.parsedPanners;
-    }
-
-    // 剔除超时未刷新的淘洗者；集合变化时同步一次
-    private void prunePanners() {
-        long now = this.level().getGameTime();
-        if (this.panners.entrySet().removeIf(entry -> now - entry.getValue() > PANNER_TIMEOUT_TICKS)) {
-            this.publishPanners();
-        }
-    }
-
-    private void publishPanners() {
-        StringBuilder builder = new StringBuilder();
-        for (UUID uuid : this.panners.keySet()) {
-            if (!builder.isEmpty()) {
-                builder.append(',');
-            }
-            builder.append(uuid);
-        }
-        String snapshot = builder.toString();
-        if (!snapshot.equals(this.entityData.get(DATA_PANNERS))) {
-            this.entityData.set(DATA_PANNERS, snapshot);
-        }
+    /** 只在最后一个玩家离开时停止点位演出。 */
+    public void stopPanning(ServerPlayer player) {
+        this.panners.remove(player);
+        this.entityData.set(DATA_PANNING, !this.panners.isEmpty());
     }
 
     public boolean isPanning() {
@@ -319,25 +262,36 @@ public abstract class ShimmerEntity extends Entity {
     @Override
     public @NotNull InteractionResult interact(@NotNull Player player, @NotNull InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
-        if (this.discardIfExpired() || !(stack.getItem() instanceof PanItem pan)
-                || !pan.canHarvest(this)) {
+        if (!(stack.getItem() instanceof PanItem pan) || !pan.profile().supports(this.getVariant().id())) {
+            return InteractionResult.PASS;
+        }
+        boolean available = this.level().isClientSide() ? this.canPan() : this.canPanOnServer();
+        if (!available) {
+            if (player instanceof ServerPlayer serverPlayer && !serverPlayer.isUsingItem()) {
+                Services.NETWORK.sendPanningState(serverPlayer, PanningStatePayload.stopped(player.getUUID()));
+            }
             return InteractionResult.PASS;
         }
         if (player.isUsingItem()) {
             return InteractionResult.CONSUME;
         }
-        // 只播放起手介质音，不调用取液逻辑；服务端广播一次，避免双端重复播放。
-        if (!this.level().isClientSide()) {
+        if (player instanceof ServerPlayer serverPlayer) {
+            if (!PanningSession.start(serverPlayer, this, hand, stack)) {
+                Services.NETWORK.sendPanningState(serverPlayer, PanningStatePayload.stopped(player.getUUID()));
+                return InteractionResult.PASS;
+            }
             this.level().playSound(null, this.getX(), this.getY(), this.getZ(),
                     this.getVariant().glow().startSound(), SoundSource.PLAYERS, 0.8F, 1.0F);
+        } else {
+            // 预测原版按键状态，首个服务端回包前松手也能发出释放操作。
+            player.startUsingItem(hand);
         }
-        player.startUsingItem(hand);
         return InteractionResult.CONSUME;
     }
 
-    // 淘洗一次，返回是否成功消耗；世界生成点耗尽后保留。
+    /** 在当前结算中扣除一次可淘洗次数。 */
     public boolean consumePanUse() {
-        if (this.level().isClientSide() || this.isRemoved() || this.discardIfExpired() || !this.canPan()) {
+        if (!this.canPanOnServer()) {
             return false;
         }
         int remaining = this.getPanRemaining() - 1;
@@ -369,10 +323,6 @@ public abstract class ShimmerEntity extends Entity {
     private void serverTick() {
         if (this.discardIfExpired()) return;
         this.recoverPanUses();
-        this.prunePanners();
-        // 允许实体与玩家 tick 顺序相差一刻；停止操作后最多两刻恢复闲置。
-        this.entityData.set(DATA_PANNING, this.canPan() && this.lastPanningTick != Long.MIN_VALUE
-                && this.level().getGameTime() - this.lastPanningTick <= 1L);
         // 位置锚定：任何外力造成的偏移都会被立刻纠正，保证始终贴合绑定的水方块
         if (!this.blockPosition().equals(this.anchorPos)) {
             this.snapToAnchor();
@@ -380,13 +330,13 @@ public abstract class ShimmerEntity extends Entity {
         // 绑定的介质方块被破坏或被方块占据时，立刻消散且不产出任何东西
         if (!this.getVariant().anchor().isValid(this.level(), this.anchorPos)) {
             this.discard();
-            return;
         }
-        if (!this.ledgerRegistered && this.level() instanceof ServerLevel serverLevel) {
-            ShimmerLedger.of(serverLevel).register(this.getUUID(), this.anchorPos,
-                    this.getSpawnSource(), this.getVariant().id(), this.expiresAt);
-            this.ledgerRegistered = true;
-        }
+    }
+
+    /** 在实体管理器接纳实体时记录占用与寿命。 */
+    public void registerInLedger(ServerLevel level) {
+        ShimmerLedger.of(level).register(this.getUUID(), this.anchorPos, this.getSpawnSource(),
+                this.getVariant().id(), this.expiresAt);
     }
 
     // 按生成时固定的周期恢复；卸载期间继续计时，跨多个周期一次补算且不超过初始次数。
@@ -410,13 +360,9 @@ public abstract class ShimmerEntity extends Entity {
                     this.getZ() + (this.random.nextDouble() - 0.5D) * 0.7D,
                     0.0D, 0.015D, 0.0D);
         }
-        int remaining = this.getPanRemaining();
-        if (remaining <= 0) {
-            return;
-        }
-        this.clientWorkTicks = this.isPanning() ? this.clientWorkTicks + 1 : 0;
-
-        if (!this.isPanning() || this.clientWorkTicks % 2 != 0) {
+        boolean panning = this.isPanning();
+        this.clientWorkTicks = panning ? this.clientWorkTicks + 1 : 0;
+        if (!panning || this.clientWorkTicks % 2 != 0) {
             return;
         }
         float angle = this.clientWorkTicks * Mth.TWO_PI / 20.0F;
@@ -498,7 +444,6 @@ public abstract class ShimmerEntity extends Entity {
         }
         this.anchorPos = tag.contains(NBT_ANCHOR) ? BlockPos.of(tag.getLong(NBT_ANCHOR)) : this.blockPosition();
         this.snapToAnchor();
-        this.ledgerRegistered = false;
         // NBT 读取时尚未接入实体管理器；过期清理留到首 tick，确保移除回调已安装。
     }
 

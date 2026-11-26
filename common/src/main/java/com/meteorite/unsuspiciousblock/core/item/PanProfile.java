@@ -21,7 +21,7 @@ public record PanProfile(
         Set<ResourceLocation> harvestTargets,                   // 可采变体集合
         TagKey<Item> repairTag,                                 // 铁砧修复材料
         Map<ResourceLocation, DoubleSupplier> luckByVariant,    // 按目标变体分档的幸运加成，缺省 0
-        DoubleSupplier regenerationChance,                      // 自然点淘空后的再生概率
+        DoubleSupplier regenerationChance,                      // 自然点每次成功淘洗的特殊点再生概率
         List<QualityNote> qualityNotes                          // 品质与介质特性提示列表
 ) {
     /** 淘盘品质提示的语义色调。 */

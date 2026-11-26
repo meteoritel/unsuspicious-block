@@ -36,7 +36,7 @@ Probe.progress = function(state, logs, table) {
                 unlocked: progress.isItemUnlocked(signature), count: progress.getItemCount(signature)};
         }
     }
-    var history = logs.getTable(this.id(table));
+    var history = logs === null ? null : logs.getTable(this.id(table));
     if (history !== null) {
         var tag = history.toTag(), counts = tag.getCompound('lifetime_source_counts'), sources = {};
         var keys = counts.getAllKeys().iterator();

@@ -40,9 +40,12 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
+import com.meteorite.unsuspiciousblock.core.pan.PanningSession;
+import net.fabricmc.fabric.api.networking.v1.EntityTrackingEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.server.level.ServerPlayer;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.trade.TradeOfferHelper;
 import net.fabricmc.fabric.api.registry.FuelRegistry;
@@ -154,6 +157,11 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                 JournalPlayerDataService.onPlayerJoined(handler.player));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
                 JournalPlayerDataService.onPlayerLeft(handler.player));
+        EntityTrackingEvents.START_TRACKING.register((entity, observer) -> {
+            if (entity instanceof ServerPlayer player) {
+                PanningSession.sendToObserver(player, observer);
+            }
+        });
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 UsbCommand.register(dispatcher));

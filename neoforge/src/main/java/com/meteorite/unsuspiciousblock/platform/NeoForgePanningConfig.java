@@ -125,10 +125,10 @@ public class NeoForgePanningConfig implements IPanningConfig {
                 .defineInRange("obsidian_pan_luck_penalty", IPanningConfig.DEFAULT_OBSIDIAN_PAN_LUCK_PENALTY,
                         IPanningConfig.MIN_PAN_LUCK_MODIFIER, IPanningConfig.MAX_PAN_LUCK_MODIFIER);
         GOLD_PAN_REGENERATION_CHANCE = builder
-                .comment("金淘盘单次淘洗后再生一个新的自然淘洗点的概率。默认 "
+                .comment("金淘盘每次成功淘洗自然点后再生特殊点的概率。默认 "
                         + IPanningConfig.DEFAULT_GOLD_PAN_REGENERATION_CHANCE + "。",
                         "",
-                        "Chance for the Gold Pan to spawn a replacement natural Shimmer after a harvest. Default "
+                        "Chance for the Gold Pan to generate a special Shimmer after each successful natural Shimmer harvest. Default "
                         + IPanningConfig.DEFAULT_GOLD_PAN_REGENERATION_CHANCE + ".")
                 .translation("unsuspiciousblock.configgui.panning.gold_pan_regeneration_chance")
                 .defineInRange("gold_pan_regeneration_chance", IPanningConfig.DEFAULT_GOLD_PAN_REGENERATION_CHANCE,

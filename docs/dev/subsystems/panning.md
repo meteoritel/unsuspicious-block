@@ -11,9 +11,9 @@
 | 变体系统 | `core/pan/variant/`：`ShimmerVariant`、`ShimmerVariants`、`AnchorRule`、`SpawnDomain`、`GlowStyle`、`PanningMedium`、`RiverDomain`/`WaterAnchor`、`NetherDomain`/`LavaAnchor` |
 | 生成与采样 | `core/pan/ShimmerSpawnService.java`、`core/pan/ShimmerSpawnStatistics.java`、`core/pan/ShimmerFeature.java`、`ShimmerFeatureConfig.java`、`ShimmerPlacement.java` |
 | 维度账本 | `core/pan/ShimmerLedger.java`（`SavedData`，每维度文件名 `unsuspiciousblock_shimmer`） |
-| 结算与物品 | `core/pan/PanningLootService.java`、`core/item/PanItem.java`、`core/item/PanProfile.java` |
+| 会话与结算 | `core/pan/PanningSession.java`、`core/pan/PanningLootService.java`、`core/item/PanItem.java`、`core/item/PanProfile.java` |
 | 数据资源 | `data/unsuspiciousblock/loot_table/gameplay/panning/{river,lava}.json`、`worldgen/{configured_feature,placed_feature}/*shimmer*.json`、`assets/minecraft/atlases/blocks.json` |
-| 客户端 | `client/pan/`（`PanningAnimation` / `PanningVisuals` / `PanningSound` / `PanningSoundController` / `PanningMediumIndex`）、`client/renderer/ShimmerSurfaceRenderer`、`client/renderer/ShimmerRenderer` |
+| 客户端 | `client/pan/`（`PanningAnimation` / `PanningVisuals` / `PanningSound` / `PanningSoundController` / `ClientPanningState`）、`client/renderer/ShimmerSurfaceRenderer`、`client/renderer/ShimmerRenderer` |
 | 调试指令 | `core/command/ShimmerCommand.java`（`/usb shimmer`，OP 2） |
 | Mixin | `client/mixin/HumanoidPanningMixin`（第三人称）、`client/mixin/fabric/ItemInHandPanningMixin`（Fabric 第一人称） |
 | 平台差异 | 世界生成注入（`BiomeModifications` vs `neoforge/biome_modifier/*.json`）；第一人称动画（Mixin vs `RenderHandEvent`）；配置实现（`IPanningConfig`） |
@@ -26,11 +26,11 @@
 flowchart TD
     Interact["玩家长按右键对准淘洗点"] --> Accept{"ShimmerEntity.interact — PanProfile.supports(variant)?"}
     Accept -->|"否"| Pass["返回 PASS 让位给原版"]
-    Accept -->|"是"| Hold["持续使用达 pan_duration_ticks"]
+    Accept -->|"是"| Hold["服务端会话绑定目标和使用手，持续校验准星"]
     Hold --> Finish["PanItem.finishUsingItem"]
-    Finish --> Consume["1. ShimmerEntity.consumePanUse (耗尽次数时自然/特殊点消散，世界点保留)"]
-    Consume --> Loot["2. PanningLootService.grantPanningLoot (按目标变体选表 + 玩家幸运与工具加成 + 笔记 immediate 结算)"]
-    Loot --> Break["3. PanItem.hurtAndBreak 消耗 1 点耐久"]
+    Finish --> Loot["按变体表和综合幸运抽取产出"]
+    Loot --> Consume["扣一次淘洗次数，投放掉落并按实际投放结算笔记"]
+    Consume --> Break["自然点奖励抽签与淘盘耐久结算"]
 ```
 
 ### 2.2 生成调度与客户端表现
@@ -38,12 +38,11 @@ flowchart TD
 ```mermaid
 flowchart TD
     Tick["服务端 tick → ShimmerSpawnService"] --> Nat["自然生成：按 spawn_interval_ticks 节拍逐维度尝试"]
-    Nat --> Pick["随机选玩家 → 8 区块内筛 8 次 → 4x3 分区最多 12 次采样"]
-    Pick --> Place["ShimmerPlacement (海平面取 ChunkGenerator，介质与群系由变体决定)"]
-    Place --> Ledger["校验上限 / 间距 / 冷却 → 生成实体并登记 ShimmerLedger"]
-    Tick --> Regen["采空再生：tryRegenerateAfterHarvest (仅自然点，按 PanProfile.regenerationChance 触发)"]
-    World["世界生成：ShimmerFeature (VEGETAL_DECORATION 阶段写实体 NBT，主线程加载后补登记)"]
-    Client["客户端同步：DATA_PAN_REMAINING / DATA_PANNERS → 驱动波光档位、粒子分档与摇洗帧组"]
+    Nat --> Pick["随机选玩家，在附近不同区块各自寻找有效落点"]
+    Pick --> Ledger["实体管理器接纳点位时登记 ShimmerLedger"]
+    Harvest["成功淘洗自然点"] --> Regen["按淘盘档案抽签，在附近选可用水面"]
+    World["世界生成在 VEGETAL_DECORATION 写入实体 NBT"] --> Ledger
+    Client["点位元数据驱动波光、粒子与声效，玩家会话快照驱动摇洗"]
 ```
 
 ## 3. 关键类
@@ -66,7 +65,7 @@ flowchart TD
 | 变体组件 | 职责 |
 |---|---|
 | `AnchorRule` | 识别介质方块、冰面冻结条件、演出高度与调试代表方块 |
-| `SpawnDomain` | 落点基准高度、群系校验与区块级预筛条件 |
+| `SpawnDomain` | 落点基准高度与候选位置的群系条件 |
 | `GlowStyle` | 波光双色、三类粒子、三类音效与摇洗帧组 |
 
 | 变体 ID | 实体子类 | 依附介质 | 生成域 | 产出表 |
@@ -74,7 +73,7 @@ flowchart TD
 | `water`（闪烁的光） | `WaterShimmerEntity` | 水源与河水冻结的普通冰 | 河流群系、生成器海平面 | `gameplay/panning/river` |
 | `glimmer`（幽微的光） | `GlimmerEntity` | 岩浆（不区分流体等级） | `#minecraft:is_nether`、生成器海平面 `32` | `gameplay/panning/lava` |
 
-**变体本身不占用实体同步字段**：波光颜色、粒子与音效由 `entity.getType()` 在双端各自查表获取；仅当实体正被淘洗时，通过 `DATA_PANNERS` 同步淘洗者 UUID 列表以驱动全客户端可见的摇洗帧动画。
+变体表现由实体类型决定。点位同步剩余次数、永久标记和工作状态，淘洗会话按玩家同步使用手、介质和服务端时钟。
 
 ## 5. 淘洗点实体 (`ShimmerEntity`) 与来源
 
@@ -85,15 +84,15 @@ flowchart TD
 |---|---|---|
 | 自然生成 | 计入每维度上限 | 寿命随机 `20–40` 分钟（按绝对游戏时间计时，停服暂停），耗尽或到期即消散释放名额 |
 | 世界生成 | 不计入 | 永不自然消散；采空后保留实体，按生成时固定的恢复周期（默认 `20–40` 分钟）逐步恢复次数至初值 |
-| 特殊生成 | 不计入 | 由自然点采空后按概率再生而来；寿命与外观同自然点，耗尽不再触发再生 |
+| 特殊生成 | 不计入 | 金淘盘每次成功淘洗自然点后按概率生成。寿命与外观同自然点，特殊点不会触发再生 |
 
 - **冰面依附与防越界机制**：水源冻结为普通冰（`minecraft:ice`，不含浮冰/蓝冰）后实体不销毁、计时照常推进，但冰面波光贴合顶面固定为静态且停止工作水花与音效。淘洗点包围盒高度 `0.9` 落在实心冰块内部，原版视线检测在冰块顶面即被碰撞箱截断，**使冰中的点自然不可淘洗**（解冻后恢复）。起手、持续与结算三阶段均重检依附面，途中结冰立即中断且不消耗耐久。
-- **工作状态与账本对齐**：`DATA_PANNING` 属于瞬态演出状态不写 NBT（停手最多两 tick 自动复原）；实体的消散与首 tick 加载主动向 `ShimmerLedger` 注销或补登记，不一致时永远以实体为准。
+- 最后一名玩家结束会话时清除点位工作状态。实体管理器接纳点位时向 `ShimmerLedger` 登记，实体消散时注销。
 
 ## 6. 淘盘 (`PanItem`) 与战利品结算 (`PanningLootService`)
 
-- **能力交集判定 (`canHarvest`)**：`PanProfile.harvestTargets` 声明每把盘可采的变体集合（三把盘耐久、修复材料与加成对比见[方块与物品](blocks-items.md)），`canHarvest` 在起手、持续使用与最终结算三处统一调用，确保铜盘/金盘无法越界淘洗岩浆变体，且移动减速直接复用原版「正在使用物品」逻辑。
-- **战利品与幸运**：淘洗上下文以 `玩家自身幸运 + PanProfile.luckByVariant` 作为 LootContext luck，按目标变体选择战利品表。`PanningLootService` 使用 `LootContextParamSets.BLOCK` 并把实际结果立即交给考古笔记。
+- `PanProfile.harvestTargets` 声明可采变体，起手时校验工具能力。持续与结束时验证会话原有目标、手、工具和有效命中。移动减速复用原版使用状态。[淘盘数值](blocks-items.md)
+- 淘洗上下文以玩家幸运和工具档案加成为 LootContext luck，按变体选择战利品表。缺表时显示提示并终止，合法空表按正常淘洗处理。考古笔记即时结算成功加入世界的掉落。
   - **三盘分化与默认阈值**：默认配置 `gold_pan = +1.0`、`copper_pan = 0.0`、`obsidian_pan(水) = -1.0`，在水域形成对称整数幸运三档。
   - **河流 `river.json`**：6 池结构，每次固定产出 `3–6` 个黏土球并抽取河床粗砂（沙子、沙砾、燧石）、冲积矿砂（空/铁粒/粗铜/煤/金粒）与零星遗物（`ancient_coin`、`lost_page`、`nautilus_shell` 与区分 `river` / `frozen_river` 的地区陶片）。
   - **子表梯度与门槛**：矿晶子表 `usb/panning/minerals` 使用平滑梯度权重（`weight: 15, quality: 35`，父池配合 `empty` `weight: 85, quality: -25`），在黑曜石盘（`-1.0`）下关闭、铜盘（`0.0`）占 `15%`、金盘（`+1.0`）升至 `45.5%`；高幸运遗物子表 `usb/panning/relics` 入口使用 `weight: 0, quality: 1`，在总幸运达到 `+1.0` 后解锁且与主表零星遗物零重叠。各池每次最多抽取一次，子表直接列出物品结果。
@@ -122,7 +121,7 @@ flowchart TD
 - **子类禁止出现介质判断**：变体差异必须通过 `ShimmerVariant` 数据驱动表达。
 - **海平面必须调用 `ChunkGenerator.getSeaLevel()`**：`Level.getSeaLevel()` 硬编码返回 `63`，在下界维度会导致落点采样静默失败。
 - **冰中不可淘洗依赖隐式几何约束**：实体包围盒高 `<= 1.0` 且依附介质拥有完整方块碰撞箱，改动 `.sized(...)` 前须重新验证射线截断效果。
-- **账本与实体不一致时以实体为准**；世界生成 Feature 不读冷却、上限与间距；采空再生只在同水平面采样；`bonus_rolls` 严禁写入基础掉落池。
+- **账本与实体不一致时以实体为准**；世界生成 Feature 不读冷却、上限与间距；特殊再生选择同高的最近可用水面；`bonus_rolls` 严禁写入基础掉落池。
 
 ## 10. 相关文档
 

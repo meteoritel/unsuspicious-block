@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.pan;
 
 import com.meteorite.unsuspiciousblock.core.item.PanItem;
+import com.meteorite.unsuspiciousblock.core.network.payload.s2c.PanningStatePayload;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.model.HumanoidModel;
@@ -25,17 +26,21 @@ public final class PanningAnimation {
     public static boolean renderFirstPerson(ItemInHandRenderer renderer, AbstractClientPlayer player,
             InteractionHand hand, ItemStack stack, float partialTick, float equipProgress,
             PoseStack pose, MultiBufferSource buffers, int light) {
-        if (player == null || player.isScoping() || !player.isUsingItem()
-                || player.getUsedItemHand() != hand || !(stack.getItem() instanceof PanItem)) {
+        if (player == null || player.isScoping() || !(stack.getItem() instanceof PanItem)) {
+            return false;
+        }
+        PanningStatePayload state = ClientPanningState.of(player);
+        if (state == null || state.hand() != hand) {
             return false;
         }
         HumanoidArm arm = hand == InteractionHand.MAIN_HAND ? player.getMainArm() : player.getMainArm().getOpposite();
         int side = arm == HumanoidArm.RIGHT ? 1 : -1;
-        float elapsed = player.getTicksUsingItem() + partialTick;
-        float blend = PanningVisuals.smooth(elapsed / PanningVisuals.fillTicks(player));
+        float elapsed = PanningVisuals.elapsed(player, state) + partialTick;
+        float fillTicks = PanningVisuals.fillTicks(state);
+        float blend = PanningVisuals.smooth(elapsed / fillTicks);
         float scoop = Mth.sin(blend * Mth.PI);
-        float wash = PanningVisuals.washBlend(player, elapsed);
-        float phase = PanningVisuals.phase(player, elapsed);
+        float wash = PanningVisuals.washBlend(fillTicks, elapsed);
+        float phase = PanningVisuals.phase(fillTicks, elapsed);
         float sway = Mth.sin(phase) * wash;
         float dip = Mth.sin(phase * 2.0F) * wash;
         pose.pushPose();
@@ -58,18 +63,22 @@ public final class PanningAnimation {
 
     // 在原版模型完成姿势后调整持盘手臂；非玩家模型与另一只手保持原版行为。
     public static void poseThirdPerson(HumanoidModel<?> model, LivingEntity entity, float ageInTicks) {
-        if (!(entity instanceof Player) || !entity.isUsingItem()
-                || !(entity.getUseItem().getItem() instanceof PanItem)) {
+        if (!(entity instanceof Player)) {
             return;
         }
-        HumanoidArm arm = entity.getUsedItemHand() == InteractionHand.MAIN_HAND
+        PanningStatePayload state = ClientPanningState.of(entity);
+        if (state == null || !(entity.getItemInHand(state.hand()).getItem() instanceof PanItem)) {
+            return;
+        }
+        HumanoidArm arm = state.hand() == InteractionHand.MAIN_HAND
                 ? entity.getMainArm() : entity.getMainArm().getOpposite();
         ModelPart part = arm == HumanoidArm.RIGHT ? model.rightArm : model.leftArm;
         int side = arm == HumanoidArm.RIGHT ? 1 : -1;
-        float elapsed = entity.getTicksUsingItem() + ageInTicks - entity.tickCount;
-        float blend = PanningVisuals.smooth(elapsed / PanningVisuals.fillTicks(entity));
-        float phase = PanningVisuals.phase(entity, elapsed);
-        float wash = PanningVisuals.washBlend(entity, elapsed);
+        float elapsed = PanningVisuals.elapsed(entity, state) + ageInTicks - entity.tickCount;
+        float fillTicks = PanningVisuals.fillTicks(state);
+        float blend = PanningVisuals.smooth(elapsed / fillTicks);
+        float phase = PanningVisuals.phase(fillTicks, elapsed);
+        float wash = PanningVisuals.washBlend(fillTicks, elapsed);
         part.xRot = Mth.lerp(blend, -0.55F, -0.9F) + Mth.sin(phase * 2.0F) * wash * 0.06F;
         part.yRot = -side * (0.22F - Mth.sin(phase) * wash * 0.14F);
         part.zRot = side * (0.08F + Mth.sin(phase) * wash * 0.07F);

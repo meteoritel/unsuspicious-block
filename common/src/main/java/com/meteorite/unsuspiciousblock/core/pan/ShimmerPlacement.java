@@ -2,6 +2,9 @@ package com.meteorite.unsuspiciousblock.core.pan;
 
 import com.meteorite.unsuspiciousblock.core.pan.variant.ShimmerVariant;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelReader;
@@ -45,19 +48,21 @@ public final class ShimmerPlacement {
     // 3x3 水平范围内足够多的开阔液面列，视为开阔液面
     public static boolean isOpenSurface(LevelReader level, ShimmerVariant variant, BlockPos surfacePos) {
         int openColumns = 0;
-        for (int offsetX = -1; offsetX <= 1; offsetX++) {
-            for (int offsetZ = -1; offsetZ <= 1; offsetZ++) {
-                BlockPos neighbor = surfacePos.offset(offsetX, 0, offsetZ);
-                if (variant.anchor().isAnchorBlock(level.getBlockState(neighbor))
-                        && level.getBlockState(neighbor.above()).isAir()) {
-                    openColumns++;
-                }
+        int remaining = 9;
+        for (BlockPos neighbor : BlockPos.betweenClosed(surfacePos.offset(-1, 0, -1), surfacePos.offset(1, 0, 1))) {
+            if (variant.anchor().isAnchorBlock(level.getBlockState(neighbor))
+                    && level.getBlockState(neighbor.above()).isAir()
+                    && ++openColumns == MIN_OPEN_SURFACE_COLUMNS) {
+                return true;
+            }
+            if (openColumns + --remaining < MIN_OPEN_SURFACE_COLUMNS) {
+                return false;
             }
         }
         return openColumns >= MIN_OPEN_SURFACE_COLUMNS;
     }
 
-    // 随机起点逐区探查 4×3 分区；内缩一格保证 3×3 液面检查只读取本区块。
+    /** 随机起点逐区探查，接缝候选仅在可读取开阔度邻域时参与。 */
     @Nullable
     public static BlockPos wanderForSurface(LevelReader level, RandomSource random, ChunkPos chunkPos,
                                             ShimmerVariant variant, int seaLevel,
@@ -65,17 +70,37 @@ public final class ShimmerPlacement {
         int start = random.nextInt(WANDER_ATTEMPTS);
         for (int attempt = 0; attempt < WANDER_ATTEMPTS; attempt++) {
             int cell = (start + attempt) % WANDER_ATTEMPTS;
-            int minX = 1 + (cell % 4) * 14 / 4;
-            int maxX = 1 + (cell % 4 + 1) * 14 / 4;
-            int minZ = 1 + (cell / 4) * 14 / 3;
-            int maxZ = 1 + (cell / 4 + 1) * 14 / 3;
-            BlockPos pos = findSurface(level, variant,
-                    chunkPos.getMinBlockX() + minX + random.nextInt(maxX - minX),
-                    chunkPos.getMinBlockZ() + minZ + random.nextInt(maxZ - minZ), seaLevel);
+            int minX = (cell % 4) * SectionPos.SECTION_SIZE / 4;
+            int maxX = (cell % 4 + 1) * SectionPos.SECTION_SIZE / 4;
+            int minZ = (cell / 4) * SectionPos.SECTION_SIZE / 3;
+            int maxZ = (cell / 4 + 1) * SectionPos.SECTION_SIZE / 3;
+            int x = chunkPos.getMinBlockX() + minX + random.nextInt(maxX - minX);
+            int z = chunkPos.getMinBlockZ() + minZ + random.nextInt(maxZ - minZ);
+            if (!hasSurfaceNeighborhood(level, chunkPos, x, z)) {
+                continue;
+            }
+            BlockPos pos = findSurface(level, variant, x, z, seaLevel);
             if (pos != null && variant.spawnDomain().acceptsBiome(level, pos) && acceptsPosition.test(pos)) {
                 return pos;
             }
         }
         return null;
+    }
+
+    private static boolean hasSurfaceNeighborhood(LevelReader level, ChunkPos center, int x, int z) {
+        for (int cx = SectionPos.blockToSectionCoord(x - 1); cx <= SectionPos.blockToSectionCoord(x + 1); cx++) {
+            for (int cz = SectionPos.blockToSectionCoord(z - 1); cz <= SectionPos.blockToSectionCoord(z + 1); cz++) {
+                if (cx == center.x && cz == center.z) {
+                    continue;
+                }
+                boolean available = level instanceof ServerLevel server
+                        ? server.getChunkSource().getChunkNow(cx, cz) != null
+                        : level instanceof WorldGenRegion region && region.hasChunk(cx, cz);
+                if (!available) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 }

@@ -1,6 +1,7 @@
 package com.meteorite.unsuspiciousblock.client.network;
 
 import com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState;
+import com.meteorite.unsuspiciousblock.client.pan.ClientPanningState;
 import com.meteorite.unsuspiciousblock.client.state.HandOfCatClientState;
 import com.meteorite.unsuspiciousblock.client.state.ReaderScanHudState;
 import com.meteorite.unsuspiciousblock.client.ui.support.JournalClientConnection;
@@ -32,7 +33,8 @@ public final class ClientPayloadBindings {
             bind(ModPayloads.SYNC_SCENARIO_CACHE, payload -> JournalClientConnection.scenario().receiveCache(payload)),
             bind(ModPayloads.SYNC_SCENARIO_RESULT, payload -> JournalClientConnection.scenario().receive(payload)),
             bind(ModPayloads.SCENARIO_REQUEST_REJECTED, payload -> JournalClientConnection.scenario().receiveRejection(payload)),
-            bind(ModPayloads.SYNC_SIMULATION_ASSIST, payload -> JournalClientConnection.scenario().receiveAssist(payload))
+            bind(ModPayloads.SYNC_SIMULATION_ASSIST, payload -> JournalClientConnection.scenario().receiveAssist(payload)),
+            bind(ModPayloads.PANNING_STATE, ClientPanningState::receive)
     );
 
     static {

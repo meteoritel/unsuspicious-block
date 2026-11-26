@@ -32,7 +32,7 @@ All three pans can be repaired on an anvil with their base material and accept D
 | Pan | Crafting Recipe | Durability | Anvil Repair | Targets & Traits |
 |---|---|---:|---|---|
 | **Copper Pan** | 4 copper ingots + 1 iron nugget | 32 | Copper Ingot | River **Shimmers** only; baseline luck for steady panning. |
-| **Gold Pan** | 4 gold ingots + 1 gold nugget | 24 | Gold Ingot | River **Shimmers** only; grants **`+1.0` luck bonus** by default and a **10%** chance to regenerate a new spot nearby after harvesting a natural spot. |
+| **Gold Pan** | 4 gold ingots + 1 gold nugget | 24 | Gold Ingot | River **Shimmers** only; grants **`+1.0` luck bonus** by default and a **10%** chance by default to create a nearby special spot on each successful harvest of a natural spot. |
 | **Obsidian Pan** | 4 obsidian + 1 crying obsidian | 64 | Obsidian | **The only pan usable on Nether Glimmers**; can pan water as well, but applies a **`-1.0` luck penalty** in rivers, lowering mineral silt and preventing gold nuggets, riverbed minerals, and Lost Pages. |
 
 Arrange ingredients in a U-shape in a crafting table (top-left/top-right main material, bottom-left/bottom-right main material + bottom-center core):
@@ -45,10 +45,10 @@ Arrange ingredients in a U-shape in a crafting table (top-left/top-right main ma
 
 Look at a panning spot and hold right-click for **5 seconds** (100 ticks) to finish one pan, consuming **1 durability** and **1 use** on the spot (default **3 uses** per spot). The surface glow dims as uses drop, and loot launches toward you upon completion.
 
-- **Shimmers (River water)**:
+- **Shimmers (Water)**:
   - **Worldgen Spots (Permanent)**: Generate with new chunks, ignore the dimension cap, and never despawn naturally. Empty worldgen spots keep emitting faint rising particles and gradually refill 1 use every **20–40 minutes**.
   - **Natural Spots (Temporary)**: Attempt to spawn near players in rivers roughly every **30 seconds** (with a "Something fell into the water" alert), lasting **20–40 minutes** (default cap of 5 per dimension). Depleting one puts the surrounding `3×3` chunks on a 30-minute spawn cooldown.
-  - **Special Spots (Temporary)**: Regenerated nearby on the same water level by a Gold Pan harvesting a natural spot.
+  - **Special Spots (Temporary)**: A bonus from harvesting natural spots with a Gold Pan. It spawns on the nearest available water surface at the same level, ignores natural spawning limits and cooldowns, and cannot generate another spot.
   - **Frozen Water**: If the water beneath a Shimmer freezes into regular ice, panning pauses until the ice melts.
 - **Glimmers (Nether lava)**:
   - Purple-glowing permanent spots placed during Nether world generation that refill over time. Only the **Obsidian Pan** can harvest Glimmers.

@@ -25,6 +25,7 @@ import com.meteorite.unsuspiciousblock.platform.loot.FishingLootModifier;
 import com.meteorite.unsuspiciousblock.platform.loot.InjectItemLootModifier;
 import com.meteorite.unsuspiciousblock.core.loottable.condition.ModLootConditions;
 import com.meteorite.unsuspiciousblock.platform.NeoForgeSpiritCatConfig;
+import com.meteorite.unsuspiciousblock.core.pan.PanningSession;
 import com.meteorite.unsuspiciousblock.platform.NeoForgePanningConfig;
 import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxTotemProxy;
 import com.meteorite.unsuspiciousblock.core.network.ModPayloads;
@@ -310,6 +311,13 @@ public class UnsuspiciousBlockNeoForge {
     private void registerEntityAttributes(EntityAttributeCreationEvent event) {
         for (EntitySyncEntry<?> entry : ENTITY_SYNC_LIST) {
             entry.putAttributes(event);
+        }
+    }
+
+    @SubscribeEvent
+    public void onPlayerStartTracking(PlayerEvent.StartTracking event) {
+        if (event.getTarget() instanceof ServerPlayer player && event.getEntity() instanceof ServerPlayer observer) {
+            PanningSession.sendToObserver(player, observer);
         }
     }
 

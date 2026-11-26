@@ -3,6 +3,7 @@ package com.meteorite.unsuspiciousblock.core.pan;
 import com.meteorite.unsuspiciousblock.core.entity.ShimmerEntity;
 import com.meteorite.unsuspiciousblock.core.pan.variant.ShimmerVariant;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.chunk.ImposterProtoChunk;
@@ -25,7 +26,8 @@ public final class ShimmerFeature extends Feature<ShimmerFeatureConfig> {
         WorldGenLevel level = context.level();
         ChunkPos chunkPos = new ChunkPos(context.origin());
         // 已完成的区块不接收生成期 NBT，避免重放或手动放置时静默丢失实体。
-        if (!(level.getChunk(chunkPos.x, chunkPos.z) instanceof ProtoChunk proto)
+        if (!(level instanceof WorldGenRegion region) || !chunkPos.equals(region.getCenter())
+                || !(level.getChunk(chunkPos.x, chunkPos.z) instanceof ProtoChunk proto)
                 || proto instanceof ImposterProtoChunk) {
             return false;
         }

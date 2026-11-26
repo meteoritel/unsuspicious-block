@@ -1,21 +1,29 @@
 package com.meteorite.unsuspiciousblock.core.pan;
 
-import com.meteorite.unsuspiciousblock.core.item.PanItem;
+import com.meteorite.unsuspiciousblock.core.entity.ShimmerEntity;
+import com.meteorite.unsuspiciousblock.core.item.PanProfile;
 import com.meteorite.unsuspiciousblock.core.journal.state.LootSourceType;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.LootCapture;
 import com.meteorite.unsuspiciousblock.core.journal.tracking.settlement.LootSettlementTarget;
 import com.meteorite.unsuspiciousblock.core.pan.variant.ShimmerVariant;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootParams;
+import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /***
@@ -38,29 +46,51 @@ public final class PanningLootService {
     private PanningLootService() {
     }
 
-    // 抽取一次淘洗产出并结算给玩家
-    public static void grantPanningLoot(ServerLevel level, ServerPlayer player, BlockPos surfacePos,
-                                        ShimmerVariant variant, ItemStack panStack) {
+    /** 完成一次已通过会话校验的淘洗，以成功投放的掉落结算笔记。 */
+    public static void harvest(ServerLevel level, ServerPlayer player, PanningSession session, PanProfile profile) {
+        ShimmerEntity target = session.target();
+        ShimmerVariant variant = target.getVariant();
+        LootTable table = level.getServer().reloadableRegistries().lookup().lookupOrThrow(Registries.LOOT_TABLE)
+                .get(variant.lootTable()).map(Holder::value).orElse(null);
+        if (table == null) {
+            player.displayClientMessage(Component.translatable("message.unsuspiciousblock.panning.missing_loot_table",
+                    variant.lootTable().location().toString()), true);
+            return;
+        }
+        BlockPos surfacePos = target.getAnchorPos();
+        ItemStack panStack = session.tool();
+        BlockState surface = level.getBlockState(surfacePos);
         LootParams lootParams = new LootParams.Builder(level)
                 .withParameter(LootContextParams.ORIGIN, Vec3.atCenterOf(surfacePos))
-                .withParameter(LootContextParams.BLOCK_STATE, level.getBlockState(surfacePos))
+                .withParameter(LootContextParams.BLOCK_STATE, surface)
                 .withParameter(LootContextParams.TOOL, panStack)
                 .withOptionalParameter(LootContextParams.THIS_ENTITY, player)
-                .withLuck(player.getLuck() + (float) toolLuck(panStack, variant))
+                .withLuck(player.getLuck() + (float) profile.luckFor(variant.id()))
                 .create(LootContextParamSets.BLOCK);
 
-        List<ItemStack> generated = LootCapture.capture(new LootCapture.Source(
+        try (var capture = LootCapture.begin(new LootCapture.Source(
                 player, variant.lootTable().location(), LootSourceType.PANNING, level, surfacePos,
-                BuiltInRegistries.BLOCK.getKey(level.getBlockState(surfacePos).getBlock())),
-                LootSettlementTarget.IMMEDIATE,
-                () -> level.getServer().reloadableRegistries().getLootTable(variant.lootTable())
-                        .getRandomItems(lootParams, player.getRandom()));
+                BuiltInRegistries.BLOCK.getKey(surface.getBlock())))) {
+            List<ItemStack> generated = capture.roll(() -> table.getRandomItems(lootParams, player.getRandom()));
+            if (!target.consumePanUse()) {
+                return;
+            }
+            capture.complete(spawnDrops(level, player, surfacePos, generated), LootSettlementTarget.IMMEDIATE);
+        }
+
+        ShimmerSpawnService.tryRegenerateAfterHarvest(level, target, profile.regenerationChance().getAsDouble());
+        panStack.hurtAndBreak(1, player, LivingEntity.getSlotForHand(session.hand()));
+    }
+
+    private static List<ItemStack> spawnDrops(ServerLevel level, ServerPlayer player, BlockPos surfacePos,
+                                              List<ItemStack> generated) {
 
         Vec3 spawnPosition = Vec3.atBottomCenterOf(surfacePos.above());
         Vec3 toPlayer = player.position().subtract(spawnPosition);
         Vec3 launchVelocity = toPlayer.scale(1.0D / FLIGHT_DRAG_SUM)
                 .add(0.0D, GRAVITY_COMPENSATION, 0.0D);
 
+        List<ItemStack> delivered = new ArrayList<>(generated.size());
         for (ItemStack drop : generated) {
             if (drop.isEmpty()) {
                 continue;
@@ -70,12 +100,10 @@ public final class PanningLootService {
             itemEntity.setDeltaMovement(launchVelocity);
             // 近距产出会很快进入拾取范围，默认延迟会让物品穿过玩家。
             itemEntity.setNoPickUpDelay();
-            level.addFreshEntity(itemEntity);
+            if (level.addFreshEntity(itemEntity)) {
+                delivered.add(itemEntity.getItem());
+            }
         }
-    }
-
-    // 工具在目标变体上的幸运加成；非淘盘物品不提供加成
-    private static double toolLuck(ItemStack panStack, ShimmerVariant variant) {
-        return panStack.getItem() instanceof PanItem pan ? pan.profile().luckFor(variant.id()) : 0.0D;
+        return delivered;
     }
 }

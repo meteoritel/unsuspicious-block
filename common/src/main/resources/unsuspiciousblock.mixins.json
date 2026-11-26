@@ -36,6 +36,8 @@
     "catfavor.TripWireLightStepMixin",
     "interaction.FishingHookMixin",
     "interaction.NestedLootTableMixin",
+    "interaction.PanningEntityLifecycleMixin",
+    "interaction.PanningUseMixin",
     "catfavor.LivingEntityFallDamageMixin",
     "catfavor.LivingEntityNineLivesMixin",
     "catfavor.PhantomSpawnerMixin",

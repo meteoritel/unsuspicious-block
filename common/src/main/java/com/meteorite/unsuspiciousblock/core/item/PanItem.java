@@ -3,8 +3,8 @@ package com.meteorite.unsuspiciousblock.core.item;
 import com.meteorite.unsuspiciousblock.core.text.TooltipBuilder;
 import com.meteorite.unsuspiciousblock.core.entity.ShimmerEntity;
 import com.meteorite.unsuspiciousblock.core.pan.PanningLootService;
-import com.meteorite.unsuspiciousblock.core.pan.ShimmerSpawnService;
-import com.meteorite.unsuspiciousblock.platform.Services;
+import com.meteorite.unsuspiciousblock.core.pan.PanningSession;
+import com.meteorite.unsuspiciousblock.platform.services.IPanningConfig;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -65,7 +65,13 @@ public class PanItem extends Item {
 
     @Override
     public int getUseDuration(@NotNull ItemStack stack, @NotNull LivingEntity entity) {
-        return Services.PANNING_CONFIG.getPanDurationTicks();
+        if (entity instanceof ServerPlayer player) {
+            PanningSession session = PanningSession.of(player);
+            if (session != null) {
+                return session.duration();
+            }
+        }
+        return IPanningConfig.DEFAULT_PAN_DURATION_TICKS;
     }
 
     // 铁砧修复材料由档案指定
@@ -74,22 +80,14 @@ public class PanItem extends Item {
         return repairCandidate.is(this.profile.repairTag()) || super.isValidRepairItem(stack, repairCandidate);
     }
 
-    // 每 tick 校验准星是否仍指向本工具可采的淘洗点；离开或变体不受支持即中断，不消耗耐久也不产出战利品
-    // 移动迟缓不在这里处理：只要处于「正在使用物品」状态，客户端即按原版规则自行减速
     @Override
     public void onUseTick(@NotNull Level level, @NotNull LivingEntity user, @NotNull ItemStack stack,
                           int remainingUseDuration) {
-        if (!(user instanceof Player player)) {
-            user.releaseUsingItem();
-            return;
-        }
-        ShimmerEntity target = findTargetedShimmer(player);
-        if (target == null || !this.canHarvest(target)) {
-            player.releaseUsingItem();
-            return;
-        }
-        if (!level.isClientSide()) {
-            target.markPanning(player);
+        if (user instanceof ServerPlayer player) {
+            PanningSession session = PanningSession.of(player);
+            if (session == null || !session.matches(player, stack)) {
+                player.releaseUsingItem();
+            }
         }
     }
 
@@ -98,26 +96,15 @@ public class PanItem extends Item {
     public @NotNull ItemStack finishUsingItem(@NotNull ItemStack stack, @NotNull Level level,
                                               @NotNull LivingEntity entity) {
         if (level instanceof ServerLevel serverLevel && entity instanceof ServerPlayer player) {
-            ShimmerEntity target = findTargetedShimmer(player);
-            if (target != null && this.canHarvest(target) && target.consumePanUse()) {
-                PanningLootService.grantPanningLoot(serverLevel, player, target.getAnchorPos(),
-                        target.getVariant(), stack);
-                if (target.isNaturalSpawn()) {
-                    ShimmerSpawnService.tryRegenerateAfterHarvest(serverLevel, target,
-                            this.profile.regenerationChance().getAsDouble());
-                }
-                stack.hurtAndBreak(1, serverLevel, player, item -> {});
+            PanningSession session = PanningSession.of(player);
+            if (session != null && session.matches(player, stack)) {
+                PanningLootService.harvest(serverLevel, player, session, this.profile);
             }
         }
         return super.finishUsingItem(stack, level, entity);
     }
 
-    // 工具与点的能力交集：工具可采该点的变体，且该点当前仍处于可淘洗状态
-    public boolean canHarvest(ShimmerEntity target) {
-        return this.profile.supports(target.getVariant().id()) && target.canPan();
-    }
-
-    // 准星命中判定：只有指向闪烁的光时才视为有效淘洗目标
+    /** 返回原版方块遮挡范围内命中的淘洗点。 */
     @Nullable
     public static ShimmerEntity findTargetedShimmer(Player player) {
         HitResult hitResult = ProjectileUtil.getHitResultOnViewVector(player,

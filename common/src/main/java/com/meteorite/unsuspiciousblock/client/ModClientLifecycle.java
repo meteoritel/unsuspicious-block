@@ -3,7 +3,7 @@ package com.meteorite.unsuspiciousblock.client;
 import com.meteorite.unsuspiciousblock.Constants;
 import com.meteorite.unsuspiciousblock.client.enchantment.EnchantmentRevealClientState;
 import com.meteorite.unsuspiciousblock.client.pan.PanningSoundController;
-import com.meteorite.unsuspiciousblock.client.pan.PanningMediumIndex;
+import com.meteorite.unsuspiciousblock.client.pan.ClientPanningState;
 import com.meteorite.unsuspiciousblock.client.pan.PanningVisuals;
 import com.meteorite.unsuspiciousblock.client.state.ArchaeologyJournalKeyHandler;
 import com.meteorite.unsuspiciousblock.client.state.CatHandClientState;
@@ -51,6 +51,7 @@ public final class ModClientLifecycle {
         JournalClientConnection.registerConnectionReset(HandOfCatClientState::reset);
         JournalClientConnection.registerConnectionReset(ReaderScanHudState::reset);
         JournalClientConnection.registerConnectionReset(PanningSoundController::reset);
+        JournalClientConnection.registerConnectionReset(ClientPanningState::reset);
         JournalClientConnection.registerConnectionReset(EnchantmentRevealClientState::reset);
         ClientTooltipBridge.install(new ClientTooltipHooks());
         ClientLootTableLanguageStore.initialize();
@@ -82,7 +83,7 @@ public final class ModClientLifecycle {
     /** 在客户端 tick 推进连接状态与表现索引。 */
     public static void tick() {
         JournalClientConnection.tick();
-        PanningMediumIndex.refresh(Minecraft.getInstance());
+        ClientPanningState.tick();
         ArchaeologyJournalKeyHandler.tick();
         SuspiciousReaderClientState.tick();
         CatHandClientState.tick();

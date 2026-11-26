@@ -3,7 +3,10 @@ package com.meteorite.unsuspiciousblock.core.mixin.player;
 import com.meteorite.unsuspiciousblock.core.player.PlayerDataLifecycle;
 import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSession;
 import com.meteorite.unsuspiciousblock.core.journal.sync.ArchaeologyJournalLogSyncSessionHolder;
+import com.meteorite.unsuspiciousblock.core.pan.PanningSession;
+import com.meteorite.unsuspiciousblock.core.pan.PanningSessionHolder;
 import net.minecraft.server.level.ServerPlayer;
+import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -14,9 +17,22 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 为服务端玩家补充日志同步会话，并将重生生命周期转交给统一玩家手册数据服务。
  */
 @Mixin(ServerPlayer.class)
-public abstract class ServerPlayerDataMixin implements ArchaeologyJournalLogSyncSessionHolder {
+public abstract class ServerPlayerDataMixin implements ArchaeologyJournalLogSyncSessionHolder, PanningSessionHolder {
     @Unique
     private final ArchaeologyJournalLogSyncSession unsuspiciousblock$journalLogSyncSession = new ArchaeologyJournalLogSyncSession();
+
+    @Unique
+    private @Nullable PanningSession unsuspiciousblock$panningSession;
+
+    @Override
+    public @Nullable PanningSession unsuspiciousblock$getPanningSession() {
+        return this.unsuspiciousblock$panningSession;
+    }
+
+    @Override
+    public void unsuspiciousblock$setPanningSession(@Nullable PanningSession session) {
+        this.unsuspiciousblock$panningSession = session;
+    }
 
     // 返回服务端玩家当前的日志同步会话
     @Override

@@ -45,6 +45,8 @@ flowchart LR
 
 NeoForge 握手阶段要求服务端具备客户端声明的必需通道；同一通道在一个物理端上只注册一次，两端统一使用 `ModPayloads.PROTOCOL_VERSION`。
 
+淘洗会话通过 `panning_state` 向本人和观察者同步。Fabric 按接收方的频道能力发送，完整摇洗表现由支持该频道的客户端提供。[淘洗系统](../subsystems/panning.md)
+
 **线程与连接代次约束**：
 - Fabric C2S 接收后自动调度到服务器主线程；NeoForge 默认在主线程执行。
 - S2C 回调保留原连接身份并交由 `JournalClientConnection` 在客户端 tick 内应用；断连或切服时推进连接代次（epoch），迟到的旧连接报文按归属直接丢弃。
