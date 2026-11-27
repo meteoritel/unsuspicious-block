@@ -7,6 +7,8 @@ import com.meteorite.unsuspiciousblock.core.effect.ModEffects;
 import com.meteorite.unsuspiciousblock.core.entity.EntityRegistrar;
 import com.meteorite.unsuspiciousblock.core.entity.ModEntities;
 import com.meteorite.unsuspiciousblock.core.item.ModItems;
+import com.meteorite.unsuspiciousblock.core.potion.ModPotions;
+import com.meteorite.unsuspiciousblock.core.potion.PurrmintPotionBrewing;
 import com.meteorite.unsuspiciousblock.core.pottery.PotteryWheelMenu;
 import com.meteorite.unsuspiciousblock.core.recipe.ModRecipeSerializers;
 import com.meteorite.unsuspiciousblock.core.sound.ModSounds;
@@ -17,6 +19,8 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.alchemy.Potion;
 
 import java.util.function.Consumer;
 import net.minecraft.world.level.block.Block;
@@ -57,6 +61,7 @@ public final class ModContent {
             Registrar<RecipeSerializer<?>, Supplier<RecipeSerializer<?>>> recipes,
             EntityRegistrar entities,
             Registrar<MobEffect, Holder<MobEffect>> effects,
+            Registrar<Potion, Holder<Potion>> potions,
             Registrar<SoundEvent, Holder<SoundEvent>> sounds,
             ModFeatures.FeatureRegistrar features,
             MenuRegistrar menus,
@@ -73,6 +78,7 @@ public final class ModContent {
         ModRecipeSerializers.forEach(registrars.recipes());
         ModEntities.forEach(registrars.entities());
         ModEffects.forEach(registrars.effects());
+        ModPotions.forEach(registrars.potions());
         ModSounds.forEach(registrars.sounds());
         registrars.menus().register(SpecimenBoxMenu.ID.getPath(),
                 SpecimenBoxMenu::new, type -> specimenBox = type);
@@ -84,6 +90,9 @@ public final class ModContent {
                 .displayItems((parameters, output) -> {
                     for (var item : ModItems.CREATIVE_TAB_ITEMS) {
                         output.accept(item.get());
+                    }
+                    for (ItemStack stack : PurrmintPotionBrewing.createCreativeStacks()) {
+                        output.accept(stack);
                     }
                 })
                 .build());

@@ -67,6 +67,7 @@ import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.alchemy.Potion;
 import net.minecraft.world.item.trading.ItemCost;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.item.crafting.RecipeSerializer;
@@ -238,6 +239,13 @@ public class UnsuspiciousBlockFabric implements ModInitializer {
                     Registry.register(BuiltInRegistries.MOB_EFFECT, rl, factory.get());
                     Holder<MobEffect> holder = BuiltInRegistries.MOB_EFFECT.getHolder(
                             ResourceKey.create(Registries.MOB_EFFECT, rl)).orElseThrow();
+                    setter.accept(holder);
+                },
+                (name, factory, setter) -> {
+                    ResourceLocation rl = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name);
+                    Registry.register(BuiltInRegistries.POTION, rl, factory.get());
+                    Holder<Potion> holder = BuiltInRegistries.POTION.getHolder(
+                            ResourceKey.create(Registries.POTION, rl)).orElseThrow();
                     setter.accept(holder);
                 },
                 (name, factory, setter) -> {

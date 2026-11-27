@@ -14,18 +14,26 @@ public class ModEffects {
 
     // 猫之九命：触发后的 2 秒纯无敌窗口标记。
     public static Holder<MobEffect> CAT_FAVOR;
+    // 喵步：灵猫药水赋予的摔落缓震与静音反幽匿状态效果。
+    public static Holder<MobEffect> CATFOOTED;
 
     // 效果注册清单条目，供各平台遍历注册
     public record EffectEntry(String name, Supplier<MobEffect> factory, Consumer<Holder<MobEffect>> setter) {}
 
     // 效果注册清单--新增效果只需在此添加一行
     public static final List<EffectEntry> REGISTRY_MANIFEST = List.of(
-            new EffectEntry("cat_favor", ModEffects::createCatFavor, holder -> CAT_FAVOR = holder)
+            new EffectEntry("cat_favor", ModEffects::createCatFavor, holder -> CAT_FAVOR = holder),
+            new EffectEntry("catfooted", ModEffects::createCatfooted, holder -> CATFOOTED = holder)
     );
 
     // 创建猫之恩惠实例
     public static CatFavorEffect createCatFavor() {
         return new CatFavorEffect();
+    }
+
+    /** 创建喵步效果实例。 */
+    public static CatfootedEffect createCatfooted() {
+        return new CatfootedEffect();
     }
 
     // 遍历清单，调用平台回调完成注册

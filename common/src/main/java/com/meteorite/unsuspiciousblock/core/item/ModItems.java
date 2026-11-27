@@ -49,6 +49,9 @@ public class ModItems {
     public static UnfiredDecoratedSherdItem UNFIRED_DECORATED_SHERD;
     public static BlockItem PURRMINT;
     public static ItemNameBlockItem PURRMINT_SEEDS;
+    public static PurrmintPotionItem PURRMINT_POTION;
+    public static SplashPurrmintPotionItem SPLASH_PURRMINT_POTION;
+    public static LingeringPurrmintPotionItem LINGERING_PURRMINT_POTION;
 
     // 通用标签的命名空间——由 Fabric API 与 NeoForge 各自的数据包提供并填充原版物品
     private static final String COMMON_TAG_NAMESPACE = "c";
@@ -135,6 +138,18 @@ public class ModItems {
                     ModItems::createPurrmintSeeds,
                     item -> PURRMINT_SEEDS = (ItemNameBlockItem) item,
                     () -> PURRMINT_SEEDS, 20, Category.STANDARD),
+            new ItemEntry("purrmint_potion",
+                    ModItems::createPurrmintPotion,
+                    item -> PURRMINT_POTION = (PurrmintPotionItem) item,
+                    () -> PURRMINT_POTION, null, Category.STANDARD),
+            new ItemEntry("splash_purrmint_potion",
+                    ModItems::createSplashPurrmintPotion,
+                    item -> SPLASH_PURRMINT_POTION = (SplashPurrmintPotionItem) item,
+                    () -> SPLASH_PURRMINT_POTION, null, Category.STANDARD),
+            new ItemEntry("lingering_purrmint_potion",
+                    ModItems::createLingeringPurrmintPotion,
+                    item -> LINGERING_PURRMINT_POTION = (LingeringPurrmintPotionItem) item,
+                    () -> LINGERING_PURRMINT_POTION, null, Category.STANDARD),
             new ItemEntry("copper_pan",
                     ModItems::createCopperPan,
                     item -> COPPER_PAN = (PanItem) item,
@@ -315,6 +330,21 @@ public class ModItems {
     /** 创建使用独立物品名称的幼苗种子。 */
     public static ItemNameBlockItem createPurrmintSeeds() {
         return new ItemNameBlockItem(ModBlocks.PURRMINT_CROP.get(), new Item.Properties());
+    }
+
+    /** 创建饮用型灵猫药水实例。 */
+    public static PurrmintPotionItem createPurrmintPotion() {
+        return new PurrmintPotionItem(new Item.Properties().stacksTo(1));
+    }
+
+    /** 创建喷溅型灵猫药水实例。 */
+    public static SplashPurrmintPotionItem createSplashPurrmintPotion() {
+        return new SplashPurrmintPotionItem(new Item.Properties().stacksTo(1));
+    }
+
+    /** 创建滞留型灵猫药水实例。 */
+    public static LingeringPurrmintPotionItem createLingeringPurrmintPotion() {
+        return new LingeringPurrmintPotionItem(new Item.Properties().stacksTo(1));
     }
 
     // 遍历清单，调用平台回调完成注册

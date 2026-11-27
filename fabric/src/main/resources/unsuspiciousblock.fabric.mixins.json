@@ -6,6 +6,9 @@
   "refmap": "${mod_id}.refmap.json",
   "mixins": [
     "aura.MobTargetAuraMixin",
+    "brewing.BrewingStandBlockEntityMixin",
+    "brewing.BrewingStandSlotMixin",
+    "brewing.PotionBrewingMixin",
     "chunk.ChunkAccessMixin",
     "chunk.ChunkSerializerMixin",
     "chunk.LevelChunkMixin",

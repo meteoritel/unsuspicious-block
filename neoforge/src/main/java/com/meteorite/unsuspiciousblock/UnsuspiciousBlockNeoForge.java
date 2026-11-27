@@ -30,6 +30,7 @@ import com.meteorite.unsuspiciousblock.platform.NeoForgePanningConfig;
 import com.meteorite.unsuspiciousblock.core.specimen.SpecimenBoxTotemProxy;
 import com.meteorite.unsuspiciousblock.core.network.ModPayloads;
 import com.meteorite.unsuspiciousblock.platform.OptionalModIntegration;
+import com.meteorite.unsuspiciousblock.platform.brewing.PurrmintNeoForgeBrewingRecipe;
 import com.meteorite.unsuspiciousblock.platform.enchantment.NeoForgeEnchantmentEventAdapter;
 import com.meteorite.unsuspiciousblock.platform.Services;
 import com.mojang.serialization.MapCodec;
@@ -51,6 +52,7 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.alchemy.Potion;
 import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -73,6 +75,7 @@ import net.neoforged.neoforge.common.loot.IGlobalLootModifier;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.event.AnvilUpdateEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.brewing.RegisterBrewingRecipesEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
@@ -106,6 +109,8 @@ public class UnsuspiciousBlockNeoForge {
             DeferredRegister.createItems(Constants.MOD_ID);
     private static final DeferredRegister<MobEffect> EFFECTS =
             DeferredRegister.create(Registries.MOB_EFFECT, Constants.MOD_ID);
+    private static final DeferredRegister<Potion> POTIONS =
+            DeferredRegister.create(Registries.POTION, Constants.MOD_ID);
     private static final DeferredRegister<SoundEvent> SOUND_EVENTS =
             DeferredRegister.create(Registries.SOUND_EVENT, Constants.MOD_ID);
     private static final DeferredRegister<MenuType<?>> MENUS =
@@ -206,6 +211,10 @@ public class UnsuspiciousBlockNeoForge {
                     setter.accept(holder);
                 },
                 (name, factory, setter) -> {
+                    Holder<Potion> holder = POTIONS.register(name, factory);
+                    setter.accept(holder);
+                },
+                (name, factory, setter) -> {
                     Holder<SoundEvent> holder = SOUND_EVENTS.register(name, factory);
                     setter.accept(holder);
                 },
@@ -233,6 +242,7 @@ public class UnsuspiciousBlockNeoForge {
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
         EFFECTS.register(modEventBus);
+        POTIONS.register(modEventBus);
         SOUND_EVENTS.register(modEventBus);
         MENUS.register(modEventBus);
         ENTITY_TYPES.register(modEventBus);
@@ -347,6 +357,11 @@ public class UnsuspiciousBlockNeoForge {
     @SubscribeEvent
     public void onRegisterCommands(RegisterCommandsEvent event) {
         UsbCommand.register(event.getDispatcher());
+    }
+
+    @SubscribeEvent
+    public void onRegisterBrewingRecipes(RegisterBrewingRecipesEvent event) {
+        event.getBuilder().addRecipe(new PurrmintNeoForgeBrewingRecipe());
     }
 
     // 花火粉可作为燃料——800t 可烧炼 4 个物品（煤炭 1600t 烧 8 个）

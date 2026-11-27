@@ -60,6 +60,10 @@
     "container.ItemCombinerMenuMixin",
     "container.SmithingMenuMixin",
     "catfavor.TamableAnimalTameMixin",
+    "effect.EntitySilenceMixin",
+    "effect.LivingEntitySilenceMixin",
+    "effect.ThrownPotionMixin",
+    "effect.VibrationListenerSilenceMixin",
     "StructureTemplateMixin"
   ],
   "client": [],
