@@ -28,12 +28,13 @@
 | 标本箱 | `core/item/SpecimenBoxItem` | 5 格便携容器，代理箱内随身物品、图腾与饰品效果 |
 | 回溯粉 | `core/item/RewindDustItem` | 在原位置重新放置世界生成结构 |
 | 古代金币 / 失落书页 / 基页 / 花火粉 | `ModItems` 工厂返回 `Item` 或 `DescribedItem` | 货币、合成材料与燃料（`DescribedItem` 统一按 `TooltipBuilder` 规范输出并支持安全折行） |
+| 半截胡萝卜（带缨 / 尖尖）/ 勉强粘好的胡萝卜 | `core/item/HalfCarrotItem`、`core/item/BarelyGluedCarrotItem` | 雨天胡萝卜彩蛋掉落与蜂蜜粘合奖励食物（默认隐藏于创造模式物品栏） |
 
 **数据资源与平台差异**
 
 - **数据资源**：配方位于 `data/unsuspiciousblock/recipe/*.json`；模型、方块状态与语言文件位于 `assets/unsuspiciousblock/`。
 - **网络与客户端**：扫描结果同步使用 `SyncReaderScanResultPayload`（见[网络与同步](../foundation/network.md)）；GUI、HUD 与模型渲染位于 `client/`（见[客户端与 GUI](client-ui.md)）。
-- **平台差异**：花火粉燃料时间（Fabric `FuelRegistry` vs NeoForge `FurnaceFuelBurnTimeEvent`）；标本箱不死图腾代理（Fabric `ServerLivingEntityEvents.ALLOW_DEATH` vs NeoForge `LivingDeathEvent`）。
+- **平台差异**：花火粉燃料时间（Fabric `FuelRegistry` vs NeoForge `FurnaceFuelBurnTimeEvent`）；标本箱不死图腾代理（Fabric `ServerLivingEntityEvents.ALLOW_DEATH` vs NeoForge `LivingDeathEvent`）；雨天胡萝卜彩蛋掉落替换（Fabric `BlockDropResourcesMixin` vs NeoForge `BlockDropsEvent`）。
 
 ## 2. 核心数据流
 

@@ -1,9 +1,15 @@
 package com.meteorite.unsuspiciousblock.core.text;
 
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.alchemy.PotionContents;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -162,5 +168,35 @@ public final class TooltipBuilder {
             Component shiftKey = Component.literal(SHIFT_KEY_LABEL).withStyle(ACCENT);
             lines.add(Component.translatable(EXPAND_HINT_KEY, shiftKey).withStyle(HINT));
         }
+    }
+
+    /**
+     * 复用原版药水提示格式追加状态效果、等级、时长与属性修饰符；列表为空时跳过，避免误印「无效果」。
+     *
+     * @param effects  待展示的状态效果列表
+     * @param tickRate 当前世界 tick 速率（来自 {@link Item.TooltipContext#tickRate()}）
+     */
+    public void potionEffects(List<MobEffectInstance> effects, float tickRate) {
+        if (effects.isEmpty()) {
+            return;
+        }
+        PotionContents.addPotionTooltip(effects, lines::add, 1.0F, tickRate);
+    }
+
+    /**
+     * 读取物品 {@link DataComponents#FOOD} 中声明的状态效果，并按原版药水格式输出效果名与时长。
+     *
+     * @param stack   当前食物物品栈
+     * @param context Tooltip 上下文（提供世界 tick 速率）
+     */
+    public void foodEffects(ItemStack stack, Item.TooltipContext context) {
+        FoodProperties food = stack.get(DataComponents.FOOD);
+        if (food == null || food.effects().isEmpty()) {
+            return;
+        }
+        List<MobEffectInstance> effects = food.effects().stream()
+                .map(FoodProperties.PossibleEffect::effect)
+                .toList();
+        potionEffects(effects, context.tickRate());
     }
 }

@@ -10,6 +10,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.flag.FeatureFlags;
 import java.util.function.BiFunction;
+import com.meteorite.unsuspiciousblock.core.block.RainyCarrotEasterEgg;
 import com.meteorite.unsuspiciousblock.core.block.UnsuspiciousBlockInteractions;
 import com.meteorite.unsuspiciousblock.core.blockentity.BlockEntityRegistrar;
 import com.meteorite.unsuspiciousblock.core.command.UsbCommand;
@@ -80,6 +81,7 @@ import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.furnace.FurnaceFuelBurnTimeEvent;
+import net.neoforged.neoforge.event.level.BlockDropsEvent;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
@@ -379,6 +381,13 @@ public class UnsuspiciousBlockNeoForge {
             event.setCancellationResult(InteractionResult.sidedSuccess(event.getLevel().isClientSide()));
             event.setCanceled(true);
         }
+    }
+
+    @SubscribeEvent
+    public void onBlockDrops(BlockDropsEvent event) {
+        RainyCarrotEasterEgg.tryApplyToDropEntities(
+                event.getLevel(), event.getPos(), event.getState(),
+                event.getBreaker(), event.getTool(), event.getDrops());
     }
 
     @SubscribeEvent

@@ -1,0 +1,43 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_half_carrot_top": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "unsuspiciousblock:half_carrot_top"
+          }
+        ]
+      }
+    },
+    "has_half_carrot_bottom": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "unsuspiciousblock:half_carrot_bottom"
+          }
+        ]
+      }
+    },
+    "has_the_recipe": {
+      "trigger": "minecraft:recipe_unlocked",
+      "conditions": {
+        "recipe": "unsuspiciousblock:barely_glued_carrot"
+      }
+    }
+  },
+  "requirements": [
+    [
+      "has_half_carrot_top",
+      "has_half_carrot_bottom",
+      "has_the_recipe"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "unsuspiciousblock:barely_glued_carrot"
+    ]
+  }
+}

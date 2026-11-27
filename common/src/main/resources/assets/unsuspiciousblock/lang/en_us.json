@@ -1346,5 +1346,17 @@
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.target_kind.tag": "Linked item tag",
   "screen.unsuspiciousblock.archaeology_journal.simulation.frame.expand_hint": "Open enlarged condition tree",
   "screen.unsuspiciousblock.archaeology_journal.simulation.params.tooltip_open": "Adjust tool, luck & enchants",
-  "screen.unsuspiciousblock.archaeology_journal.simulation.params.readonly_hint": "Adjust via Params"
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.readonly_hint": "Adjust via Params",
+  "item.unsuspiciousblock.half_carrot_top": "Half Carrot (Leafy Top)",
+  "item.unsuspiciousblock.half_carrot_bottom": "Half Carrot (Tip)",
+  "item.unsuspiciousblock.half_carrot_top.tooltip.desc": "Snapped clean in two by a stray brick",
+  "item.unsuspiciousblock.half_carrot_bottom.tooltip.desc": "A muddy yet surprisingly crisp carrot tip",
+  "item.unsuspiciousblock.half_carrot.tooltip.hint": "Patch both halves with a %s",
+  "item.unsuspiciousblock.barely_glued_carrot": "Barely Glued Carrot",
+  "item.unsuspiciousblock.barely_glued_carrot.tooltip.desc": "Patched with honey—crooked, yet sweet",
+  "item.unsuspiciousblock.barely_glued_carrot.tooltip.cure": "Cures Poison; edible when full",
+  "advancement.unsuspiciousblock.biggest_in_the_patch": "It Should've Been the Biggest One...",
+  "advancement.unsuspiciousblock.biggest_in_the_patch.desc": "Harvest a ripe carrot out in the rain, only for a mystery brick to ruin the prize.",
+  "death.attack.unsuspiciousblock.carrot_brick": "%1$s was bonked into oblivion by a stray brick in a rainy carrot patch",
+  "death.attack.unsuspiciousblock.carrot_brick.player": "%1$s got bricked in a rainy carrot patch while trying to escape %2$s"
 }

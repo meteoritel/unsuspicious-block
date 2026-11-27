@@ -1346,5 +1346,17 @@
   "screen.unsuspiciousblock.archaeology_journal.simulation.conditions.target_kind.tag": "关联物品标签",
   "screen.unsuspiciousblock.archaeology_journal.simulation.frame.expand_hint": "在放大视图中查看条件树",
   "screen.unsuspiciousblock.archaeology_journal.simulation.params.tooltip_open": "调整工具、幸运与附魔",
-  "screen.unsuspiciousblock.archaeology_journal.simulation.params.readonly_hint": "请在「参数…」中调整"
+  "screen.unsuspiciousblock.archaeology_journal.simulation.params.readonly_hint": "请在「参数…」中调整",
+  "item.unsuspiciousblock.half_carrot_top": "半截胡萝卜（带缨）",
+  "item.unsuspiciousblock.half_carrot_bottom": "半截胡萝卜（尖尖）",
+  "item.unsuspiciousblock.half_carrot_top.tooltip.desc": "刚露头就被天降红砖拍断的上半截",
+  "item.unsuspiciousblock.half_carrot_bottom.tooltip.desc": "沾着雨泥的下半截，好歹脆生生的",
+  "item.unsuspiciousblock.half_carrot.tooltip.hint": "凑齐两半加%s，或许能勉强粘回去",
+  "item.unsuspiciousblock.barely_glued_carrot": "勉强粘好的胡萝卜",
+  "item.unsuspiciousblock.barely_glued_carrot.tooltip.desc": "用蜂蜜硬粘回原样，略歪但甜滋滋的",
+  "item.unsuspiciousblock.barely_glued_carrot.tooltip.cure": "清除中毒，满饱食度也可食用",
+  "advancement.unsuspiciousblock.biggest_in_the_patch": "它应是这片地里最大的那根……",
+  "advancement.unsuspiciousblock.biggest_in_the_patch.desc": "雨天在露天地里收胡萝卜时，被一块来路不明的红砖砸断了全村的希望。",
+  "death.attack.unsuspiciousblock.carrot_brick": "%1$s 在雨天收胡萝卜时被天降红砖精准爆头了",
+  "death.attack.unsuspiciousblock.carrot_brick.player": "%1$s 在逃离 %2$s 时，于雨中胡萝卜地里被一块红砖送走了"
 }

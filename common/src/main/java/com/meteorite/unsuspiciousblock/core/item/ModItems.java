@@ -52,6 +52,9 @@ public class ModItems {
     public static PurrmintPotionItem PURRMINT_POTION;
     public static SplashPurrmintPotionItem SPLASH_PURRMINT_POTION;
     public static LingeringPurrmintPotionItem LINGERING_PURRMINT_POTION;
+    public static HalfCarrotItem HALF_CARROT_TOP;
+    public static HalfCarrotItem HALF_CARROT_BOTTOM;
+    public static BarelyGluedCarrotItem BARELY_GLUED_CARROT;
 
     // 通用标签的命名空间——由 Fabric API 与 NeoForge 各自的数据包提供并填充原版物品
     private static final String COMMON_TAG_NAMESPACE = "c";
@@ -161,7 +164,19 @@ public class ModItems {
             new ItemEntry("obsidian_pan",
                     ModItems::createObsidianPan,
                     item -> OBSIDIAN_PAN = (PanItem) item,
-                    () -> OBSIDIAN_PAN, 10, Category.PAN)
+                    () -> OBSIDIAN_PAN, 10, Category.PAN),
+            new ItemEntry("half_carrot_top",
+                    ModItems::createHalfCarrotTop,
+                    item -> HALF_CARROT_TOP = (HalfCarrotItem) item,
+                    () -> HALF_CARROT_TOP, null, Category.STANDARD),
+            new ItemEntry("half_carrot_bottom",
+                    ModItems::createHalfCarrotBottom,
+                    item -> HALF_CARROT_BOTTOM = (HalfCarrotItem) item,
+                    () -> HALF_CARROT_BOTTOM, null, Category.STANDARD),
+            new ItemEntry("barely_glued_carrot",
+                    ModItems::createBarelyGluedCarrot,
+                    item -> BARELY_GLUED_CARROT = (BarelyGluedCarrotItem) item,
+                    () -> BARELY_GLUED_CARROT, null, Category.STANDARD)
     );
 
     // 创造模式物品栏图标 —— 考古笔记
@@ -345,6 +360,26 @@ public class ModItems {
     /** 创建滞留型灵猫药水实例。 */
     public static LingeringPurrmintPotionItem createLingeringPurrmintPotion() {
         return new LingeringPurrmintPotionItem(new Item.Properties().stacksTo(1));
+    }
+
+    /** 创建半个胡萝卜（上半）实例。 */
+    public static HalfCarrotItem createHalfCarrotTop() {
+        return new HalfCarrotItem(
+                new Item.Properties().food(HalfCarrotItem.FOOD_PROPERTIES),
+                "item.unsuspiciousblock.half_carrot_top.tooltip.desc");
+    }
+
+    /** 创建半个胡萝卜（下半）实例。 */
+    public static HalfCarrotItem createHalfCarrotBottom() {
+        return new HalfCarrotItem(
+                new Item.Properties().food(HalfCarrotItem.FOOD_PROPERTIES),
+                "item.unsuspiciousblock.half_carrot_bottom.tooltip.desc");
+    }
+
+    /** 创建勉强粘好的胡萝卜实例。 */
+    public static BarelyGluedCarrotItem createBarelyGluedCarrot() {
+        return new BarelyGluedCarrotItem(
+                new Item.Properties().rarity(Rarity.UNCOMMON).food(BarelyGluedCarrotItem.FOOD_PROPERTIES));
     }
 
     // 遍历清单，调用平台回调完成注册

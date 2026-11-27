@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "unsuspiciousblock:half_carrot_top"
+    },
+    {
+      "item": "unsuspiciousblock:half_carrot_bottom"
+    },
+    {
+      "item": "minecraft:honey_bottle"
+    }
+  ],
+  "result": {
+    "id": "unsuspiciousblock:barely_glued_carrot",
+    "count": 1
+  }
+}

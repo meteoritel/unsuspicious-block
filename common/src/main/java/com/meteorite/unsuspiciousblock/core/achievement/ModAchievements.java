@@ -22,7 +22,8 @@ public enum ModAchievements implements ModAchievement {
     // ======================== 挑战进度 ========================
     COMPLETIONISTS_DUST("challenges/completionists_dust", "completionist"),
     CACHE_ME_IF_YOU_CAN("challenges/cache_me_if_you_can", "reach_table_limit"),
-    MOTHERLODE("challenges/motherlode", "motherlode");
+    MOTHERLODE("challenges/motherlode", "motherlode"),
+    BIGGEST_IN_THE_PATCH("challenges/biggest_in_the_patch", "carrot_brick");
 
     private final String path;
     private final String criterion;

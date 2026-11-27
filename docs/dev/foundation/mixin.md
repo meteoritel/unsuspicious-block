@@ -31,7 +31,7 @@ Create 配置通过 NeoForge 的 `requiredMods` 启用，由配置插件按模�
 | 轻步机关 | 压力板实体筛选及绊线实体判断只对持有轻步的玩家附加过滤；NeoForge 耕地采用可取消事件 | [猫族关系系统](../subsystems/cat-favor.md) |
 | 区域驱避 | 接入索敌、生成玩家筛选、路径候选、AI 推进写入和原版缓存动作 | [实体与 AI](../subsystems/entities-world.md)的「区域光环」 |
 | 客户端表现 | 读取受保护界面字段，或转交附魔预览、动态语言与淘盘动画 | [客户端与 GUI](../subsystems/client-ui.md) |
-| Fabric 专用补齐 | 补齐铁砧修复、剪羊毛、耕地变化过滤与第一人称手部动画 | [实体与 AI](../subsystems/entities-world.md)、[附魔系统](../subsystems/enchantment.md)、[淘洗系统](../subsystems/panning.md) |
+| Fabric 专用补齐 | 补齐铁砧修复、剪羊毛、耕地变化过滤、方块掉落修改与第一人称手部动画 | [实体与 AI](../subsystems/entities-world.md)、[附魔系统](../subsystems/enchantment.md)、[淘洗系统](../subsystems/panning.md)、[方块与物品](../subsystems/blocks-items.md) |
 | 淘洗生命期 | 在原版结束使用或移除玩家时释放会话，在实体管理器接纳淘洗点时登记账本 | [淘洗系统](../subsystems/panning.md) |
 
 ## 3. 三种典型设计模式

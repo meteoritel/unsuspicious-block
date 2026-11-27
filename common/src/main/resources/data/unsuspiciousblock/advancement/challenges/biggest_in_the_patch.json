@@ -1,0 +1,28 @@
+{
+  "parent": "unsuspiciousblock:adventure/take_note_take_note",
+  "display": {
+    "icon": {
+      "id": "unsuspiciousblock:half_carrot_top"
+    },
+    "title": {
+      "translate": "advancement.unsuspiciousblock.biggest_in_the_patch"
+    },
+    "description": {
+      "translate": "advancement.unsuspiciousblock.biggest_in_the_patch.desc"
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  },
+  "criteria": {
+    "carrot_brick": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "carrot_brick"
+    ]
+  ]
+}

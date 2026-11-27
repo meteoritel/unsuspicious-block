@@ -10,7 +10,7 @@
 | 进度数据 | `common/src/main/resources/data/unsuspiciousblock/advancement/`（`adventure/` 冒险分支、`challenges/` 挑战分支、`recipes/unsuspiciousblock/` 配方解锁） |
 | 代码授予桥 | `core/achievement/AchievementManager.java`、`core/achievement/ModAchievements.java`、`core/achievement/ModAchievement.java` |
 | 收集类判定器 | `core/journal/tracking/ArchaeologyChallengeChecker.java` |
-| 代码授予调用点 | `PotteryWheelBlockEntity`、`SuspiciousReaderItem`、`SmithingMenuMixin`、`JournalLogHandler`、`ArchaeologyChallengeChecker` |
+| 代码授予调用点 | `PotteryWheelBlockEntity`、`SuspiciousReaderItem`、`SmithingMenuMixin`、`JournalLogHandler`、`ArchaeologyChallengeChecker`、`RainyCarrotEasterEgg` |
 | 网络与平台差异 | 无（原版 Advancement API 在 Fabric 与 NeoForge 上完全一致，直接走原版同步） |
 | Mixin | `core/mixin/container/SmithingMenuMixin.java`（仅用于授予 `ancient_scholarship`，见[Mixin 边界与接线](../foundation/mixin.md)） |
 
@@ -49,6 +49,7 @@ flowchart LR
     Root --> SC["sherd_collector — [goal] 集齐原版陶片"]
     Root --> TC["template_collector — [goal] 集齐原版纹饰样板"]
     Root --> CD["completionists_dust — [challenge] 原版考古表全图鉴"]
+    Root --> BP["biggest_in_the_patch — [challenge · hidden] 雨天露天破坏成熟胡萝卜触发彩蛋"]
 ```
 
 ## 3. 关键类与触发方式
@@ -69,6 +70,7 @@ flowchart LR
 | `ancient_scholarship` | `SmithingMenuMixin` | 从锻造台取出失落书页锻造出的附魔书 |
 | `cache_me_if_you_can` | `JournalLogHandler` | 任意单张战利品表的日志条目数达到上限 |
 | `sherd_collector` / `template_collector` / `completionists_dust` | `ArchaeologyChallengeChecker` | 见下文收集类判定规则 |
+| `biggest_in_the_patch` | `RainyCarrotEasterEgg` | 雨天/雷雨天露天破坏成熟胡萝卜首次触发天降红砖彩蛋 |
 
 ## 4. 收集类进度的判定范围
 
