@@ -22,16 +22,16 @@ public abstract class EntitySilenceMixin {
         }
     }
 
+    // Fabric 和 NeoForge 的这两个脚步方法参数不同，静音判定只需要当前实体。
     @Inject(method = "playMuffledStepSound", at = @At("HEAD"), cancellable = true)
-    private void unsuspiciousblock$silenceMuffledStep(BlockState state, CallbackInfo ci) {
+    private void unsuspiciousblock$silenceMuffledStep(CallbackInfo ci) {
         if (PurrmintEffectService.shouldSilenceMovement((Entity) (Object) this)) {
             ci.cancel();
         }
     }
 
     @Inject(method = "playCombinationStepSounds", at = @At("HEAD"), cancellable = true)
-    private void unsuspiciousblock$silenceCombinationStep(BlockState primaryState, BlockState secondaryState,
-                                                          CallbackInfo ci) {
+    private void unsuspiciousblock$silenceCombinationStep(CallbackInfo ci) {
         if (PurrmintEffectService.shouldSilenceMovement((Entity) (Object) this)) {
             ci.cancel();
         }
